@@ -255,6 +255,24 @@ export const lineupSchema = z
     message: `編成には${REQUIRED_ACTIVE_PLAYERS}人が必要です。`,
   });
 
+export const startDraftRequestSchema = z.object({
+  captainA: z.object({ playerId: z.string().min(1).max(64), role: roleSchema }),
+  captainB: z.object({ playerId: z.string().min(1).max(64), role: roleSchema }),
+});
+
+export const draftPickRequestSchema = z.object({
+  playerId: z.string().min(1).max(64),
+  role: roleSchema,
+});
+
+/** 保存済みドラフト状態の読み戻し */
+export const draftStateSchema = z.object({
+  status: z.enum(['active', 'completed']),
+  captains: z.object({ A: z.string(), B: z.string() }),
+  picks: z.array(z.object({ playerId: z.string(), role: roleSchema, team: z.enum(['A', 'B']) })),
+  order: z.array(z.enum(['A', 'B'])),
+});
+
 /**
  * チーム確定のリクエスト。
  * 生成した候補を選ぶ場合と、主催者が手動調整した編成を送る場合がある。

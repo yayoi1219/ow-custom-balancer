@@ -196,6 +196,8 @@ export interface PlayerFormProps {
   errorDetails?: string[];
   /** 新規登録時のみ Turnstile を表示する */
   turnstileSiteKey?: string | null;
+  /** 主催者が他の参加者を修正する場合の対象名 */
+  subjectName?: string | null;
   onSubmit: (input: PlayerInput, turnstileToken: string | null) => void;
   onCancel?: () => void;
 }
@@ -209,6 +211,7 @@ export function PlayerForm({
   errorMessage,
   errorDetails,
   turnstileSiteKey,
+  subjectName,
   onSubmit,
   onCancel,
 }: PlayerFormProps) {
@@ -335,7 +338,16 @@ export function PlayerForm({
 
   return (
     <form className="card form" onSubmit={handleSubmit} noValidate>
-      <h2>{mode === 'create' ? '参加登録' : '登録内容の編集'}</h2>
+      <h2>
+        {mode === 'create'
+          ? '参加登録'
+          : subjectName
+            ? `${subjectName} の登録内容を修正`
+            : '登録内容の編集'}
+      </h2>
+      {subjectName ? (
+        <p className="field-help">主催者として、この参加者の登録内容を修正します。</p>
+      ) : null}
 
       <div className="field">
         <label htmlFor="display-name">

@@ -17,6 +17,8 @@ export interface PlayerListProps {
   selectionEnabled: boolean;
   onToggleActive?: (playerId: string, nextActive: boolean) => void;
   onRemove?: (player: PlayerPublic) => void;
+  /** 主催者が参加者の登録内容を修正する */
+  onEdit?: (player: PlayerPublic) => void;
   busy?: boolean;
 }
 
@@ -64,6 +66,7 @@ export function PlayerList({
   selectionEnabled,
   onToggleActive,
   onRemove,
+  onEdit,
   busy = false,
 }: PlayerListProps) {
   const activeCount = players.filter((player) => player.active).length;
@@ -117,15 +120,29 @@ export function PlayerList({
                 </div>
                 <RoleRankTags player={player} />
               </div>
-              {isHost && onRemove ? (
-                <button
-                  type="button"
-                  className="button button-ghost button-small"
-                  onClick={() => onRemove(player)}
-                  disabled={busy}
-                >
-                  削除
-                </button>
+              {isHost ? (
+                <div className="player-actions">
+                  {onEdit ? (
+                    <button
+                      type="button"
+                      className="button button-ghost button-small"
+                      onClick={() => onEdit(player)}
+                      disabled={busy}
+                    >
+                      修正
+                    </button>
+                  ) : null}
+                  {onRemove ? (
+                    <button
+                      type="button"
+                      className="button button-ghost button-small"
+                      onClick={() => onRemove(player)}
+                      disabled={busy}
+                    >
+                      削除
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </li>
           );

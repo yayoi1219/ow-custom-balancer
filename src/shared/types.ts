@@ -71,6 +71,24 @@ export interface TeamCandidate {
   preferencePenalty: number;
 }
 
+/** ドラフトでの1人分の指名結果 */
+export interface DraftPick {
+  playerId: string;
+  role: Role;
+  team: TeamSide;
+}
+
+/** キャプテンドラフトの進行状態 */
+export interface DraftState {
+  status: 'active' | 'completed';
+  /** チームごとのキャプテン（参加者ID） */
+  captains: Record<TeamSide, string>;
+  /** 確定済みの指名（キャプテン2人を含む） */
+  picks: DraftPick[];
+  /** 残りの指名順。先頭が次の手番。 */
+  order: TeamSide[];
+}
+
 /** 閲覧者の権限 */
 export type ViewerRole = 'host' | 'player' | 'guest';
 
@@ -93,6 +111,8 @@ export interface RoomSnapshot {
   version: number;
   players: PlayerPublic[];
   selectedCandidate: TeamCandidate | null;
+  /** 進行中・完了したキャプテンドラフト（全員に配信する） */
+  draft: DraftState | null;
   /** 主催者にのみ渡されるチーム候補一覧 */
   candidates: TeamCandidate[] | null;
 }

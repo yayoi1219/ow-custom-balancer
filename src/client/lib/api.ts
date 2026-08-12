@@ -1,7 +1,7 @@
 /** API クライアント。統一されたエラー形式を扱う。 */
 
 import type { LineupSlot } from '../../shared/balancer';
-import { AUTH_HEADER } from '../../shared/constants';
+import { AUTH_HEADER, type Role } from '../../shared/constants';
 import {
   ERROR_CODES,
   errorMessageFor,
@@ -166,6 +166,37 @@ export const api = {
     request<RoomStateResponse>(`/api/rooms/${encodeURIComponent(roomId)}/selected-candidate`, {
       method: 'POST',
       body: { candidateId },
+      token,
+    }),
+
+  startDraft: (
+    roomId: string,
+    captainA: { playerId: string; role: Role },
+    captainB: { playerId: string; role: Role },
+    token: string,
+  ): Promise<RoomStateResponse> =>
+    request<RoomStateResponse>('/api/rooms/' + encodeURIComponent(roomId) + '/draft', {
+      method: 'POST',
+      body: { captainA, captainB },
+      token,
+    }),
+
+  /** ドラフトでの指名（手番のキャプテン本人か主催者） */
+  draftPick: (
+    roomId: string,
+    playerId: string,
+    role: Role,
+    token: string,
+  ): Promise<RoomStateResponse> =>
+    request<RoomStateResponse>('/api/rooms/' + encodeURIComponent(roomId) + '/draft/picks', {
+      method: 'POST',
+      body: { playerId, role },
+      token,
+    }),
+
+  cancelDraft: (roomId: string, token: string): Promise<RoomStateResponse> =>
+    request<RoomStateResponse>('/api/rooms/' + encodeURIComponent(roomId) + '/draft', {
+      method: 'DELETE',
       token,
     }),
 

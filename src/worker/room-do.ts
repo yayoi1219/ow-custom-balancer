@@ -13,9 +13,11 @@ import { MAX_PLAYERS, REQUIRED_ACTIVE_PLAYERS, ROOM_TTL_MS, type Role } from '..
 import { ERROR_CODES, errorMessageFor, type ErrorCode } from '../shared/errors';
 import { evaluateLineup, generateTeamCandidates, type LineupSlot } from '../shared/balancer';
 import { toBalancePlayers } from '../shared/lineup';
+import { applyPick, currentTurn, draftToLineup, startDraft } from '../shared/draft';
 import { normalizePreferenceGroups, type PreferenceGroups } from '../shared/preferences';
 import { normalizeLegacyRank } from '../shared/ranks';
 import type {
+  DraftState,
   JoinRoomResponse,
   PlayerPublic,
   RecruitStatus,
@@ -30,6 +32,7 @@ import type {
   ViewerRole,
 } from '../shared/types';
 import {
+  draftStateSchema,
   normalizedKey,
   preferenceGroupsJsonSchema,
   roleRanksSchema,
@@ -86,6 +89,7 @@ interface RoomRow extends Record<string, SqlStorageValue> {
   expires_at: number;
   selected_candidate: string | null;
   candidates: string | null;
+  draft: string | null;
   version: number;
 }
 
@@ -123,6 +127,7 @@ export class RoomDurableObject extends DurableObject<Env> {
          expires_at INTEGER NOT NULL,
          selected_candidate TEXT,
          candidates TEXT,
+         draft TEXT,
          version INTEGER NOT NULL
        );`,
     );
@@ -145,7 +150,20 @@ export class RoomDurableObject extends DurableObject<Env> {
       `CREATE UNIQUE INDEX IF NOT EXISTS players_normalized_name
          ON players (normalized_display_name);`,
     );
+    this.migrateDraftColumn();
     this.migratePreferenceColumn();
+  }
+
+  /** 既存の部屋へ draft 列を追加する（何度実行しても安全） */
+  private migrateDraftColumn(): void {
+    const sql = this.ctx.storage.sql;
+    const columns = sql
+      .exec<{ name: string } & Record<string, SqlStorageValue>>(`PRAGMA table_info(room);`)
+      .toArray()
+      .map((column) => String(column.name));
+    if (columns.length > 0 && !columns.includes('draft')) {
+      sql.exec(`ALTER TABLE room ADD COLUMN draft TEXT;`);
+    }
   }
 
   /**
@@ -250,6 +268,12 @@ export class RoomDurableObject extends DurableObject<Env> {
     return parsed.success ? (parsed.data as TeamCandidate[]) : null;
   }
 
+  private parseDraft(raw: string | null): DraftState | null {
+    if (!raw) return null;
+    const parsed = draftStateSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? (parsed.data as DraftState) : null;
+  }
+
   private parseSelected(raw: string | null): TeamCandidate | null {
     if (!raw) return null;
     const parsed = teamCandidateSchema.safeParse(JSON.parse(raw));
@@ -266,6 +290,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       version: room.version,
       players: this.loadPlayers().map((row) => this.toPlayerPublic(row)),
       selectedCandidate: this.parseSelected(room.selected_candidate),
+      draft: this.parseDraft(room.draft),
       candidates: includeCandidates ? this.parseCandidates(room.candidates) : null,
     };
   }
@@ -506,6 +531,7 @@ export class RoomDurableObject extends DurableObject<Env> {
                  host_token_hash = NULL,
                  selected_candidate = NULL,
                  candidates = NULL,
+                 draft = NULL,
                  version = version + 1
            ;`,
           nextStatus,
@@ -548,8 +574,8 @@ export class RoomDurableObject extends DurableObject<Env> {
 
     this.ctx.storage.transactionSync(() => {
       this.sql.exec(
-        `INSERT INTO room (id, title, host_token_hash, status, created_at, expires_at, selected_candidate, candidates, version)
-         VALUES (?, ?, ?, 'open', ?, ?, NULL, NULL, 1);`,
+        `INSERT INTO room (id, title, host_token_hash, status, created_at, expires_at, selected_candidate, candidates, draft, version)
+         VALUES (?, ?, ?, 'open', ?, ?, NULL, NULL, NULL, 1);`,
         roomId,
         title,
         hostTokenHash,
@@ -653,6 +679,7 @@ export class RoomDurableObject extends DurableObject<Env> {
   ): Promise<DoResult<RoomStateResponse>> {
     const live = await this.ensureLive();
     if (!live.ok) return live;
+    const room = live.data;
     if (!token) return fail(ERROR_CODES.UNAUTHORIZED, 401);
 
     const rows = this.sql
@@ -661,8 +688,12 @@ export class RoomDurableObject extends DurableObject<Env> {
     const player = rows[0];
     if (!player) return fail(ERROR_CODES.PLAYER_NOT_FOUND, 404);
 
+    // 本人の編集トークンに加えて、主催者も修正できる
+    // （ランクの打ち間違いを本人が離席していても直せるようにするため）
     const hashed = await this.hash(token);
-    if (!timingSafeEqual(hashed, player.edit_token_hash)) {
+    const isSelf = timingSafeEqual(hashed, player.edit_token_hash);
+    const isHost = room.host_token_hash !== null && timingSafeEqual(hashed, room.host_token_hash);
+    if (!isSelf && !isHost) {
       return fail(ERROR_CODES.FORBIDDEN, 403);
     }
 
@@ -706,8 +737,8 @@ export class RoomDurableObject extends DurableObject<Env> {
     return {
       ok: true,
       data: {
-        room: this.snapshot(updated, false),
-        viewer: { role: 'player', playerId },
+        room: this.snapshot(updated, isHost),
+        viewer: isHost ? { role: 'host', playerId: null } : { role: 'player', playerId },
       },
     };
   }
@@ -918,6 +949,148 @@ export class RoomDurableObject extends DurableObject<Env> {
     });
     this.broadcast();
 
+    const updated = this.loadRoom();
+    if (!updated) return fail(ERROR_CODES.INTERNAL_ERROR, 500);
+    return {
+      ok: true,
+      data: { room: this.snapshot(updated, true), viewer: { role: 'host', playerId: null } },
+    };
+  }
+
+  /* ---------------- キャプテンドラフト ---------------- */
+
+  /** アクティブ参加者を取得し、10人でなければエラーを返す */
+  private requireActiveRoster(): DoResult<PlayerPublic[]> {
+    const activePlayers = this.loadPlayers()
+      .filter((row) => row.active === 1)
+      .map((row) => this.toPlayerPublic(row));
+    if (activePlayers.length !== REQUIRED_ACTIVE_PLAYERS) {
+      return fail(
+        ERROR_CODES.ACTIVE_COUNT_INVALID,
+        409,
+        `チーム分けにはアクティブ参加者がちょうど${REQUIRED_ACTIVE_PLAYERS}人必要です（現在${activePlayers.length}人）。`,
+      );
+    }
+    return { ok: true, data: activePlayers };
+  }
+
+  /** ドラフト開始（主催者のみ） */
+  async startDraft(
+    token: string | null,
+    captainA: { playerId: string; role: Role },
+    captainB: { playerId: string; role: Role },
+  ): Promise<DoResult<RoomStateResponse>> {
+    const live = await this.ensureLive();
+    if (!live.ok) return live;
+    const auth = await this.requireHost(live.data, token);
+    if (!auth.ok) return auth;
+
+    const roster = this.requireActiveRoster();
+    if (!roster.ok) return roster;
+
+    const started = startDraft(roster.data, captainA, captainB);
+    if (!started.ok) return fail(ERROR_CODES.VALIDATION_ERROR, 400, started.message);
+
+    this.ctx.storage.transactionSync(() => {
+      // ドラフトを始めたら自動生成の候補と確定は破棄する
+      this.sql.exec(
+        `UPDATE room SET draft = ?, candidates = NULL, selected_candidate = NULL;`,
+        JSON.stringify(started.value),
+      );
+      this.bumpVersion();
+    });
+    this.broadcast();
+    return this.hostStateResponse();
+  }
+
+  /**
+   * ドラフトでの指名。
+   * 手番のキャプテン本人（編集トークン）か、主催者が代理で実行できる。
+   */
+  async draftPick(
+    token: string | null,
+    pick: { playerId: string; role: Role },
+  ): Promise<DoResult<RoomStateResponse>> {
+    const live = await this.ensureLive();
+    if (!live.ok) return live;
+    const room = live.data;
+    if (!token) return fail(ERROR_CODES.UNAUTHORIZED, 401);
+
+    const draft = this.parseDraft(room.draft);
+    if (!draft || draft.status !== 'active') {
+      return fail(ERROR_CODES.DRAFT_NOT_ACTIVE, 409);
+    }
+    const roster = this.requireActiveRoster();
+    if (!roster.ok) return roster;
+
+    const turn = currentTurn(draft);
+    if (!turn) return fail(ERROR_CODES.DRAFT_NOT_ACTIVE, 409);
+
+    // 手番のキャプテン本人か主催者かを確認する
+    const viewer = await this.resolveViewer(room, token);
+    const isHost = viewer.role === 'host';
+    const isCurrentCaptain = viewer.role === 'player' && viewer.playerId === draft.captains[turn];
+    if (!isHost && !isCurrentCaptain) {
+      return fail(
+        ERROR_CODES.NOT_YOUR_TURN,
+        403,
+        'いまはあなたの手番ではありません（手番のキャプテンか主催者のみ指名できます）。',
+      );
+    }
+
+    const applied = applyPick(draft, roster.data, pick);
+    if (!applied.ok) return fail(ERROR_CODES.VALIDATION_ERROR, 400, applied.message);
+
+    const next = applied.value;
+    // 全員決まったら、そのままチームとして確定する
+    let selected: TeamCandidate | null = null;
+    if (next.status === 'completed') {
+      const evaluated = evaluateLineup(toBalancePlayers(roster.data), draftToLineup(next));
+      if (!evaluated.ok) {
+        return fail(ERROR_CODES.VALIDATION_ERROR, 400, evaluated.message, evaluated.reasons);
+      }
+      selected = evaluated.candidate;
+    }
+
+    this.ctx.storage.transactionSync(() => {
+      if (selected) {
+        this.sql.exec(
+          `UPDATE room SET draft = ?, selected_candidate = ?;`,
+          JSON.stringify(next),
+          JSON.stringify(selected),
+        );
+      } else {
+        this.sql.exec(`UPDATE room SET draft = ?;`, JSON.stringify(next));
+      }
+      this.bumpVersion();
+    });
+    this.broadcast();
+
+    const updated = this.loadRoom();
+    if (!updated) return fail(ERROR_CODES.INTERNAL_ERROR, 500);
+    return {
+      ok: true,
+      data: { room: this.snapshot(updated, isHost), viewer },
+    };
+  }
+
+  /** ドラフトを中止する（主催者のみ） */
+  async cancelDraft(token: string | null): Promise<DoResult<RoomStateResponse>> {
+    const live = await this.ensureLive();
+    if (!live.ok) return live;
+    const auth = await this.requireHost(live.data, token);
+    if (!auth.ok) return auth;
+
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(`UPDATE room SET draft = NULL;`);
+      this.bumpVersion();
+    });
+    this.broadcast();
+    return this.hostStateResponse();
+  }
+
+  /** 主催者向けの現在状態を返す */
+  private hostStateResponse(): DoResult<RoomStateResponse> {
     const updated = this.loadRoom();
     if (!updated) return fail(ERROR_CODES.INTERNAL_ERROR, 500);
     return {

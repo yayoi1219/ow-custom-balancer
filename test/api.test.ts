@@ -589,6 +589,183 @@ describe('アクティブ参加者とチーム分け', () => {
   });
 });
 
+describe('キャプテンドラフト', () => {
+  /** Tank2 / Damage4 / Support4 がちょうど揃う10人を作る */
+  const rolesFor = (index: number): Role[] =>
+    index < 2 ? ['tank'] : index < 6 ? ['damage'] : ['support'];
+
+  it('主催者だけがドラフトを開始できる', async () => {
+    const room = await createRoom();
+    const credentials = await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS, rolesFor);
+    const body = {
+      captainA: { playerId: credentials[0].playerId, role: 'tank' },
+      captainB: { playerId: credentials[1].playerId, role: 'tank' },
+    };
+
+    const denied = await callApi(`/api/rooms/${room.roomId}/draft`, { method: 'POST', body });
+    expect(denied.status).toBe(403);
+
+    const allowed = await callApi<RoomStateResponse>(`/api/rooms/${room.roomId}/draft`, {
+      method: 'POST',
+      body,
+      token: room.hostToken,
+    });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.data?.room.draft?.status).toBe('active');
+    expect(allowed.body.data?.room.draft?.picks).toHaveLength(2);
+  });
+
+  it('手番でないキャプテンは指名できない', async () => {
+    const room = await createRoom();
+    const credentials = await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS, rolesFor);
+    await callApi(`/api/rooms/${room.roomId}/draft`, {
+      method: 'POST',
+      body: {
+        captainA: { playerId: credentials[0].playerId, role: 'tank' },
+        captainB: { playerId: credentials[1].playerId, role: 'tank' },
+      },
+      token: room.hostToken,
+    });
+
+    // 最初の手番は A。B のキャプテンが指名しようとすると拒否される
+    const wrongTurn = await callApi(`/api/rooms/${room.roomId}/draft/picks`, {
+      method: 'POST',
+      body: { playerId: credentials[2].playerId, role: 'damage' },
+      token: credentials[1].editToken,
+    });
+    expect(wrongTurn.status).toBe(403);
+    expect(wrongTurn.body.error?.code).toBe(ERROR_CODES.NOT_YOUR_TURN);
+
+    // キャプテンでない参加者も指名できない
+    const notCaptain = await callApi(`/api/rooms/${room.roomId}/draft/picks`, {
+      method: 'POST',
+      body: { playerId: credentials[3].playerId, role: 'damage' },
+      token: credentials[5].editToken,
+    });
+    expect(notCaptain.status).toBe(403);
+
+    // 手番のキャプテン本人なら指名できる
+    const ok = await callApi<RoomStateResponse>(`/api/rooms/${room.roomId}/draft/picks`, {
+      method: 'POST',
+      body: { playerId: credentials[2].playerId, role: 'damage' },
+      token: credentials[0].editToken,
+    });
+    expect(ok.status).toBe(200);
+    expect(ok.body.data?.room.draft?.picks).toHaveLength(3);
+  });
+
+  it('最後まで指名するとチームが自動的に確定する', async () => {
+    const room = await createRoom();
+    const credentials = await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS, rolesFor);
+    await callApi(`/api/rooms/${room.roomId}/draft`, {
+      method: 'POST',
+      body: {
+        captainA: { playerId: credentials[0].playerId, role: 'tank' },
+        captainB: { playerId: credentials[1].playerId, role: 'tank' },
+      },
+      token: room.hostToken,
+    });
+
+    // 主催者が代理で8人を指名する
+    const remaining = credentials.slice(2);
+    let last: Awaited<ReturnType<typeof callApi<RoomStateResponse>>> | null = null;
+    for (const [index, credential] of remaining.entries()) {
+      last = await callApi<RoomStateResponse>(`/api/rooms/${room.roomId}/draft/picks`, {
+        method: 'POST',
+        body: { playerId: credential.playerId, role: index < 4 ? 'damage' : 'support' },
+        token: room.hostToken,
+      });
+      expect(last.status).toBe(200);
+    }
+
+    expect(last?.body.data?.room.draft?.status).toBe('completed');
+    // ドラフト結果がそのまま確定チームになる
+    const selected = last?.body.data?.room.selectedCandidate;
+    expect(selected).toBeTruthy();
+    expect(selected?.teamA.players).toHaveLength(5);
+    expect(selected?.teamB.players).toHaveLength(5);
+  });
+
+  it('構成が埋まらなくなる指名は拒否する', async () => {
+    const room = await createRoom();
+    // Support 可能者をちょうど4人にし、そのうち1人だけ Damage も可能にする
+    const credentials = await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS, (index) =>
+      index < 2
+        ? ['tank']
+        : index < 6
+          ? ['damage']
+          : index === 6
+            ? ['damage', 'support']
+            : ['support'],
+    );
+    await callApi(`/api/rooms/${room.roomId}/draft`, {
+      method: 'POST',
+      body: {
+        captainA: { playerId: credentials[0].playerId, role: 'tank' },
+        captainB: { playerId: credentials[1].playerId, role: 'tank' },
+      },
+      token: room.hostToken,
+    });
+    const result = await callApi(`/api/rooms/${room.roomId}/draft/picks`, {
+      method: 'POST',
+      body: { playerId: credentials[6].playerId, role: 'damage' },
+      token: room.hostToken,
+    });
+    expect(result.status).toBe(400);
+    expect(result.body.error?.message).toContain('埋められなくなります');
+  });
+
+  it('主催者はドラフトを中止できる', async () => {
+    const room = await createRoom();
+    const credentials = await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS, rolesFor);
+    await callApi(`/api/rooms/${room.roomId}/draft`, {
+      method: 'POST',
+      body: {
+        captainA: { playerId: credentials[0].playerId, role: 'tank' },
+        captainB: { playerId: credentials[1].playerId, role: 'tank' },
+      },
+      token: room.hostToken,
+    });
+    const cancelled = await callApi<RoomStateResponse>(`/api/rooms/${room.roomId}/draft`, {
+      method: 'DELETE',
+      token: room.hostToken,
+    });
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.data?.room.draft).toBeNull();
+  });
+});
+
+describe('主催者による参加者の修正', () => {
+  it('主催者は他の参加者の登録内容を修正できる', async () => {
+    const room = await createRoom();
+    const [first] = await seedPlayers(room.roomId, 2);
+    const result = await callApi<RoomStateResponse>(
+      `/api/rooms/${room.roomId}/players/${first.playerId}`,
+      {
+        method: 'PATCH',
+        body: { player: samplePlayer('主催者が直した名前', ['support']) },
+        token: room.hostToken,
+      },
+    );
+    expect(result.status).toBe(200);
+    const updated = result.body.data?.room.players.find((p) => p.id === first.playerId);
+    expect(updated?.displayName).toBe('主催者が直した名前');
+    expect(updated?.eligibleRoles).toEqual(['support']);
+    expect(result.body.data?.viewer.role).toBe('host');
+  });
+
+  it('主催者でも参加者でもないトークンでは修正できない', async () => {
+    const room = await createRoom();
+    const [first] = await seedPlayers(room.roomId, 2);
+    const result = await callApi(`/api/rooms/${room.roomId}/players/${first.playerId}`, {
+      method: 'PATCH',
+      body: { player: samplePlayer('なりすまし') },
+      token: 'x'.repeat(43),
+    });
+    expect(result.status).toBe(403);
+  });
+});
+
 describe('有効期限', () => {
   it('期限前はアクセスできる', async () => {
     const room = await createRoom();

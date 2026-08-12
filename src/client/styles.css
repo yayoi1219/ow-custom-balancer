@@ -1325,3 +1325,93 @@ textarea {
 .lineup-editor .team-member {
   display: block;
 }
+
+/* 主催者の操作ボタン（修正・削除） */
+.player-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .player-actions {
+    flex-direction: row;
+  }
+}
+
+/* ---------- キャプテンドラフト ---------- */
+
+.draft-status .notice {
+  margin-top: 0;
+}
+
+/* 手番のチームを枠で示す */
+.team-block.is-turn {
+  border-color: var(--team-color, var(--accent));
+  box-shadow: 0 0 0 1px var(--team-color, var(--accent));
+}
+
+.draft-empty-slot {
+  opacity: 0.5;
+}
+
+.draft-pool {
+  margin-top: 1.2rem;
+}
+
+.draft-pool-list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.draft-pool-item {
+  border-radius: var(--radius-small);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  padding: 0.6rem 0.75rem;
+}
+
+.draft-pool-item.is-picked {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.draft-pool-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.7rem;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 0;
+  cursor: pointer;
+}
+
+.draft-pool-name:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.draft-pool-name .rank-tags {
+  margin: 0;
+}
+
+.draft-role-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.draft-setup .field + .field {
+  margin-top: 1rem;
+}

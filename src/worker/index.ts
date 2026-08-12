@@ -10,10 +10,12 @@ import { ERROR_CODES, type ErrorCode } from '../shared/errors';
 import type { PublicConfig } from '../shared/types';
 import {
   createRoomRequestSchema,
+  draftPickRequestSchema,
   formatIssues,
   idPathSchema,
   joinRoomRequestSchema,
   selectCandidateRequestSchema,
+  startDraftRequestSchema,
   updateActivePlayersRequestSchema,
   updatePlayerRequestSchema,
   updateStatusRequestSchema,
@@ -192,6 +194,18 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return stub.fetch(new Request('https://room.internal/ws', request));
   }
 
+  /* ---- ドラフトの指名 ---- */
+  if (section === 'draft' && segments.length === 5 && segments[4] === 'picks') {
+    if (request.method !== 'POST') return methodNotAllowed(['POST']);
+    const limited = await enforceRateLimit(env, request, `mutate:${roomId}`, RATE_LIMITS.mutate);
+    if (limited) return limited;
+    const body = await readJsonBody(request);
+    if (!body.ok) return body.response;
+    const parsed = draftPickRequestSchema.safeParse(body.value);
+    if (!parsed.success) return validationError(formatIssues(parsed.error));
+    return respond(await stub.draftPick(token, parsed.data));
+  }
+
   /* ---- /api/rooms/:roomId/players ---- */
   if (section === 'players') {
     if (segments.length === 4) {
@@ -262,6 +276,21 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (section === 'team-candidates') {
     if (request.method !== 'POST') return methodNotAllowed(['POST']);
     return respond(await stub.generateCandidates(token));
+  }
+
+  /* ---- キャプテンドラフト ---- */
+  if (section === 'draft') {
+    if (request.method === 'POST') {
+      const body = await readJsonBody(request);
+      if (!body.ok) return body.response;
+      const parsed = startDraftRequestSchema.safeParse(body.value);
+      if (!parsed.success) return validationError(formatIssues(parsed.error));
+      return respond(await stub.startDraft(token, parsed.data.captainA, parsed.data.captainB));
+    }
+    if (request.method === 'DELETE') {
+      return respond(await stub.cancelDraft(token));
+    }
+    return methodNotAllowed(['POST', 'DELETE']);
   }
 
   /* ---- 確定チーム ---- */

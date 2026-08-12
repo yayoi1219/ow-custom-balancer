@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MAX_PLAYERS, REQUIRED_ACTIVE_PLAYERS, SERVICE_NAME } from '../../shared/constants';
 import type { LineupSlot } from '../../shared/balancer';
+import type { Role } from '../../shared/constants';
 import { formatDiscordResult } from '../../shared/discord';
 import type {
   PlayerInput,
@@ -12,6 +13,7 @@ import type {
   ViewerInfo,
 } from '../../shared/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { DraftBoard, DraftSetup } from '../components/DraftBoard';
 import { LineupEditor } from '../components/LineupEditor';
 import { ConnectionBadge } from '../components/ConnectionBadge';
 import { PlayerForm } from '../components/PlayerForm';
@@ -93,6 +95,10 @@ export function RoomPage({ roomId }: { roomId: string }) {
   const [selection, setSelection] = useState<string[]>([]);
   const [lineupReasons, setLineupReasons] = useState<string[]>([]);
   const [editingLineup, setEditingLineup] = useState(false);
+  const [hostEditingPlayer, setHostEditingPlayer] = useState<PlayerPublic | null>(null);
+  const [hostEditError, setHostEditError] = useState<string | null>(null);
+  const [showDraftSetup, setShowDraftSetup] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = room ? `${room.title} - ${SERVICE_NAME}` : SERVICE_NAME;
@@ -274,6 +280,69 @@ export function RoomPage({ roomId }: { roomId: string }) {
       channel.applyState(result.room, result.viewer);
       showToast('チームを確定しました。');
     }, 'チームの確定に失敗しました。');
+  };
+
+  /* ---------------- キャプテンドラフト ---------------- */
+
+  const handleStartDraft = (
+    captainA: { playerId: string; role: Role },
+    captainB: { playerId: string; role: Role },
+  ): void => {
+    setDraftError(null);
+    void runHostAction(async (token) => {
+      try {
+        const result = await api.startDraft(roomId, captainA, captainB, token);
+        channel.applyState(result.room, result.viewer);
+        setShowDraftSetup(false);
+        showToast('キャプテンドラフトを開始しました。');
+      } catch (caught) {
+        setDraftError(handleApiError(caught, 'ドラフトを開始できませんでした。'));
+        throw caught;
+      }
+    }, 'ドラフトを開始できませんでした。');
+  };
+
+  /** 指名は手番のキャプテン本人か主催者が行う。使うトークンもそれに合わせる。 */
+  const handleDraftPick = async (playerId: string, role: Role): Promise<void> => {
+    const token = hostToken ?? playerCredential?.editToken;
+    if (!token) return;
+    setBusy(true);
+    setDraftError(null);
+    try {
+      const result = await api.draftPick(roomId, playerId, role, token);
+      channel.applyState(result.room, result.viewer);
+    } catch (caught) {
+      setDraftError(handleApiError(caught, '指名に失敗しました。'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCancelDraft = (): void => {
+    void runHostAction(async (token) => {
+      const result = await api.cancelDraft(roomId, token);
+      channel.applyState(result.room, result.viewer);
+      setDraftError(null);
+      showToast('ドラフトを中止しました。');
+    }, 'ドラフトを中止できませんでした。');
+  };
+
+  /** 主催者が参加者の登録内容を修正する */
+  const handleHostEditPlayer = async (player: PlayerPublic, input: PlayerInput): Promise<void> => {
+    if (!hostToken) return;
+    setBusy(true);
+    setHostEditError(null);
+    try {
+      const result = await api.updatePlayer(roomId, player.id, input, hostToken);
+      channel.applyState(result.room, result.viewer);
+      setHostEditingPlayer(null);
+      showToast(`${player.displayName} の登録内容を修正しました。`);
+    } catch (caught) {
+      // エラーはフォーム内に出す（一覧まで戻らずに直せるように）
+      setHostEditError(handleApiError(caught, '参加者の修正に失敗しました。'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   /** 主催者が手動調整した編成を確定する */
@@ -465,6 +534,19 @@ export function RoomPage({ roomId }: { roomId: string }) {
                 確定を解除
               </button>
             ) : null}
+            {!room.draft ? (
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  setDraftError(null);
+                  setShowDraftSetup((current) => !current);
+                }}
+                disabled={busy || activeCount !== REQUIRED_ACTIVE_PLAYERS}
+              >
+                キャプテンドラフト
+              </button>
+            ) : null}
             <button
               type="button"
               className="button button-danger"
@@ -593,6 +675,44 @@ export function RoomPage({ roomId }: { roomId: string }) {
         )
       ) : null}
 
+      {/* キャプテンドラフト（開始フォームは主催者のみ、盤面は全員に見せる） */}
+      {isHost && showDraftSetup && !room.draft ? (
+        <section className="card">
+          <div className="card-header">
+            <h2>キャプテンドラフト</h2>
+          </div>
+          <DraftSetup
+            players={players.filter((player) => player.active)}
+            busy={busy}
+            errorMessage={draftError}
+            onStart={handleStartDraft}
+            onCancel={() => {
+              setShowDraftSetup(false);
+              setDraftError(null);
+            }}
+          />
+        </section>
+      ) : null}
+
+      {room.draft ? (
+        <section className="card">
+          <div className="card-header">
+            <h2>キャプテンドラフト</h2>
+            <p className="card-meta">{room.draft.status === 'completed' ? '完了' : '進行中'}</p>
+          </div>
+          <DraftBoard
+            draft={room.draft}
+            players={players.filter((player) => player.active)}
+            myPlayerId={myPlayerId}
+            isHost={isHost}
+            busy={busy}
+            errorMessage={draftError}
+            onPick={(playerId, role) => void handleDraftPick(playerId, role)}
+            onCancel={handleCancelDraft}
+          />
+        </section>
+      ) : null}
+
       <PlayerList
         players={players}
         myPlayerId={myPlayerId}
@@ -609,7 +729,34 @@ export function RoomPage({ roomId }: { roomId: string }) {
           );
         }}
         onRemove={(player) => setPending({ kind: 'removePlayer', player })}
+        onEdit={(player) => {
+          setHostEditError(null);
+          setHostEditingPlayer(player);
+        }}
       />
+
+      {/* 主催者による参加者の修正 */}
+      {isHost && hostEditingPlayer ? (
+        <PlayerForm
+          key={hostEditingPlayer.id}
+          mode="edit"
+          roomId={roomId}
+          subjectName={hostEditingPlayer.displayName}
+          initialValue={{
+            displayName: hostEditingPlayer.displayName,
+            eligibleRoles: hostEditingPlayer.eligibleRoles,
+            rolePreferenceGroups: hostEditingPlayer.rolePreferenceGroups,
+            roleRanks: hostEditingPlayer.roleRanks,
+          }}
+          submitting={busy}
+          errorMessage={hostEditError}
+          onSubmit={(input) => void handleHostEditPlayer(hostEditingPlayer, input)}
+          onCancel={() => {
+            setHostEditingPlayer(null);
+            setHostEditError(null);
+          }}
+        />
+      ) : null}
 
       {room.selectedCandidate ? (
         <section className="card">
