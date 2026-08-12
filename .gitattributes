@@ -1,0 +1,8 @@
+# リポジトリ内は LF で統一する。
+# Windows で作業しても CI（Linux）で prettier --check が落ちないようにするため。
+* text=auto eol=lf
+
+# バイナリ扱い
+*.png binary
+*.jpg binary
+*.ico binary

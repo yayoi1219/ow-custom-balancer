@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["vite/client", "@cloudflare/vitest-pool-workers/types"]
+  },
+  "include": ["test/**/*.ts", "src/**/*.ts", "worker-configuration.d.ts"],
+  "exclude": ["src/client/**/*"]
+}

@@ -1,0 +1,74 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: 型チェック・テスト・ビルド
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 依存関係をインストール
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: 型チェック
+        run: npm run typecheck
+
+      - name: テスト
+        run: npm run test:run
+
+      - name: 本番ビルド
+        run: npm run build
+
+  deploy:
+    name: Cloudflare Workers へデプロイ
+    needs: ci
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 依存関係をインストール
+        run: npm ci
+
+      - name: 型チェック
+        run: npm run typecheck
+
+      - name: テスト
+        run: npm run test:run
+
+      - name: 本番ビルド
+        run: npm run build
+
+      - name: デプロイ
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

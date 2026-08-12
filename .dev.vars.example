@@ -1,0 +1,13 @@
+# ローカル開発用の秘密値。このファイルを .dev.vars としてコピーして使う。
+# .dev.vars は絶対にコミットしないこと（.gitignore 済み）。
+
+# Cloudflare Turnstile の Secret Key
+# 下記はローカル開発・テスト用の公式テストキー（常に成功する）。
+# 本番環境では Cloudflare ダッシュボードで発行した値を wrangler secret put で設定する。
+TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
+
+# 権限トークンをハッシュ化するための秘密値（32文字以上のランダム文字列）
+TOKEN_HMAC_SECRET="local-dev-token-hmac-secret-change-me"
+
+# IPアドレスを短期識別値へ変換するための秘密値（32文字以上のランダム文字列）
+IP_HASH_SECRET="local-dev-ip-hash-secret-change-me"

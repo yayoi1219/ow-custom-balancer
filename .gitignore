@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# Claude Code のローカル設定（マシン固有）
+.claude/settings.local.json

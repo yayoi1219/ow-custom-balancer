@@ -1,0 +1,47 @@
+{
+  // Cloudflare Workers の設定。React の静的ファイル・API・Durable Objects を1つの Worker として配信する。
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ow-custom-balancer",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // React のビルド成果物。ディレクトリは Cloudflare Vite プラグインが自動設定する。
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // すべてのリクエストをまず Worker で受け、セキュリティヘッダーを付与する
+    "run_worker_first": true,
+  },
+
+  "observability": {
+    "enabled": true,
+  },
+
+  // 公開してよい値のみ vars へ置く（秘密値は wrangler secret put で設定する）
+  // 下記は Cloudflare 公式のテスト用 site key（常に成功する）。本番では自分のキーへ変更する。
+  "vars": {
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+  },
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ROOM",
+        "class_name": "RoomDurableObject",
+      },
+      {
+        "name": "RATE_LIMIT",
+        "class_name": "RateLimitDurableObject",
+      },
+    ],
+  },
+
+  // SQLite-backed Durable Objects の初回 migration
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RoomDurableObject", "RateLimitDurableObject"],
+    },
+  ],
+}

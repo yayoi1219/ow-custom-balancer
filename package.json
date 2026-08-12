@@ -1,0 +1,43 @@
+{
+  "name": "ow-custom-balancer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Overwatch 2 カスタムゲーム向けのチームバランス作成ツール（非公式）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "deploy": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.14.1",
+    "@cloudflare/vitest-pool-workers": "^0.20.2",
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.1",
+    "@vitejs/plugin-react": "^5.0.4",
+    "eslint": "^9.39.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vite": "^7.1.9",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.45.0"
+  }
+}

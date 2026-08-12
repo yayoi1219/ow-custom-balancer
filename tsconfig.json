@@ -1,0 +1,10 @@
+{
+  // ルートは各設定への入り口のみ。実際の型チェックは client / worker / test / node で分ける。
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.client.json" },
+    { "path": "./tsconfig.worker.json" },
+    { "path": "./tsconfig.test.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

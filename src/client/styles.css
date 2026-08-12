@@ -1,0 +1,1278 @@
+/*
+ * モバイルファースト。ダークテーマ固定。
+ *
+ * 配色方針:
+ *  - 長時間見ても疲れないよう、彩度と明暗差を抑えた色のみを使う（純白・純黒は使わない）
+ *  - 色の軸は「ランクティア」に一本化し、ロールは無彩色の文字で示す
+ *  - 枠線を減らし、余白と淡い面で情報をまとめる
+ */
+
+:root {
+  /* フォームコントロールなどブラウザ既定の描画もダークに揃える */
+  color-scheme: dark;
+
+  /* 面と文字 */
+  --bg: #16181d;
+  --bg-elevated: #1d2027;
+  --bg-subtle: #262a32;
+  --bg-inset: #1a1d23;
+  --text: #cfd4dd;
+  --text-strong: #e3e7ee;
+  --text-muted: #939aa8;
+  --border: #2c313a;
+  --border-strong: #3d434e;
+
+  /* アクセント（低彩度） */
+  --accent: #7c9cca;
+  --accent-text: #171a20;
+  --accent-soft: #232c39;
+  --danger: #c98d89;
+  --danger-soft: #2e2426;
+  --success: #7fb397;
+  --success-soft: #1f2a25;
+  --warn: #c3a86c;
+  --warn-soft: #2a2620;
+
+  /* チーム識別（落ち着いた青とテラコッタ） */
+  --team-a: #7c9cca;
+  --team-b: #c4867e;
+
+  /* ランクティア色 */
+  --tier-bronze: #bb906d;
+  --tier-silver: #a3a9b4;
+  --tier-gold: #c4a463;
+  --tier-platinum: #89aebc;
+  --tier-emerald: #6ec2a0;
+  --tier-diamond: #8aa6cf;
+  --tier-master: #a992c9;
+  --tier-grandmaster: #c48d92;
+  --tier-champion: #c795af;
+  --tier-unknown: #868d99;
+
+  --radius: 14px;
+  --radius-small: 9px;
+  --shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  --font: 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic UI', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ティア色の割り当て。--tier を参照すれば文字にも面にも使える。 */
+.tier-bronze {
+  --tier: var(--tier-bronze);
+}
+.tier-silver {
+  --tier: var(--tier-silver);
+}
+.tier-gold {
+  --tier: var(--tier-gold);
+}
+.tier-platinum {
+  --tier: var(--tier-platinum);
+}
+.tier-emerald {
+  --tier: var(--tier-emerald);
+}
+.tier-diamond {
+  --tier: var(--tier-diamond);
+}
+.tier-master {
+  --tier: var(--tier-master);
+}
+.tier-grandmaster {
+  --tier: var(--tier-grandmaster);
+}
+.tier-champion {
+  --tier: var(--tier-champion);
+}
+.tier-unknown {
+  --tier: var(--tier-unknown);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.8;
+  letter-spacing: 0.01em;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--text-strong);
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  margin: 0 0 0.7em;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 1.4rem;
+}
+
+h2 {
+  font-size: 1.08rem;
+}
+
+h3 {
+  font-size: 0.98rem;
+}
+
+p {
+  margin: 0 0 0.9em;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 0.2em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--bg-elevated);
+  padding: 0.6rem 1rem;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+}
+
+/* ---------- レイアウト ---------- */
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.9rem 1.15rem;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.site-title {
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-strong);
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+}
+
+.site-header nav {
+  display: flex;
+  gap: 1.1rem;
+  font-size: 0.83rem;
+}
+
+.page {
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 1.5rem 1.15rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 1.6rem 1.15rem;
+  color: var(--text-muted);
+  font-size: 0.79rem;
+  text-align: center;
+}
+
+.site-footer p {
+  margin: 0 0 0.5em;
+}
+
+.hero {
+  padding: 0.75rem 0.2rem 0;
+}
+
+.hero h1 {
+  font-size: 1.6rem;
+}
+
+.lead {
+  color: var(--text-muted);
+  max-width: 44em;
+}
+
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.35rem 1.25rem;
+}
+
+.card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+
+.card-meta {
+  color: var(--text-muted);
+  font-size: 0.83rem;
+  margin: 0 0 0.6em;
+}
+
+.prose h2 {
+  margin-top: 2em;
+}
+
+.prose ul {
+  padding-left: 1.3em;
+}
+
+.prose li {
+  margin-bottom: 0.3em;
+}
+
+.links {
+  margin-top: 1.5em;
+}
+
+.note,
+.notice {
+  background: var(--bg-subtle);
+  border-radius: var(--radius-small);
+  padding: 0.75rem 0.95rem;
+  font-size: 0.86rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+  margin: 0.9em 0 0;
+}
+
+.notice-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.steps {
+  padding-left: 1.4em;
+  margin: 0 0 1em;
+}
+
+.steps li {
+  margin-bottom: 0.4em;
+}
+
+/* ---------- フォーム ---------- */
+
+.form .field + .field,
+.form fieldset + .field,
+.form .field + fieldset {
+  margin-top: 1.5rem;
+}
+
+.field {
+  display: block;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+fieldset.field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.field label,
+.field legend,
+.field-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.87rem;
+  color: var(--text-strong);
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+.required {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: 4px;
+  padding: 0.05em 0.45em;
+  margin-left: 0.45em;
+  vertical-align: 0.1em;
+  letter-spacing: 0.05em;
+}
+
+input[type='text'],
+select,
+textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.97rem;
+  color: var(--text);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-small);
+  padding: 0.62rem 0.7rem;
+}
+
+input[type='text']:hover,
+select:hover {
+  border-color: var(--accent);
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.field-help {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  margin: 0.45rem 0 0;
+}
+
+.field-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--radius-small);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.86rem;
+  line-height: 1.7;
+  margin: 1.1rem 0 0;
+}
+
+.field-error::before {
+  content: '⚠ ';
+}
+
+.field-error-details {
+  display: block;
+  font-size: 0.79rem;
+  margin-top: 0.3rem;
+  opacity: 0.9;
+}
+
+.form-actions,
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+
+.button {
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0.6rem 1.15rem;
+  min-height: 44px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-subtle);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.06);
+}
+
+.button-danger {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--danger);
+}
+
+.button-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.button-ghost {
+  background: transparent;
+}
+
+.button-small {
+  font-size: 0.82rem;
+  padding: 0.3rem 0.8rem;
+  min-height: 34px;
+}
+
+.role-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.role-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-small);
+  padding: 0.5rem 0.95rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.92rem;
+  margin: 0;
+  background: var(--bg-inset);
+}
+
+.role-checkbox.is-checked {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.preference-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.2rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.preference-item {
+  border-radius: var(--radius-small);
+  padding: 0.85rem 0.95rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+
+.preference-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.8rem;
+}
+
+.preference-select select {
+  width: auto;
+  min-width: 7.5rem;
+  padding: 0.32rem 0.55rem;
+  font-size: 0.85rem;
+}
+
+.preference-effective {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+/* 選択中のティア色を左のラインで示す */
+.rank-field {
+  border-left: 3px solid var(--tier, var(--border-strong));
+  padding-left: 0.7rem;
+}
+
+.rank-field-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.rank-field-row select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.rank-field-row select:first-child {
+  flex-grow: 2;
+}
+
+.turnstile {
+  min-height: 70px;
+}
+
+/* ---------- バッジ ---------- */
+
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.7;
+  border-radius: 999px;
+  padding: 0.1rem 0.7rem;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+
+.badge-host {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.badge-me,
+.badge-active,
+.badge-selected,
+.badge-status-open {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.badge-inactive,
+.badge-status-closed {
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+}
+
+.badge-status-expired,
+.badge-status-deleted {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* ロールは色ではなく文字で示す（色の軸はランクティアに集約） */
+.role-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.7;
+  padding: 0.05rem 0.55rem;
+  border-radius: 5px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  min-width: 4.8em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ---------- 部屋ヘッダー ---------- */
+
+.room-header-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.room-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.room-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.room-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.8rem;
+  margin: 1rem 0 0;
+  font-size: 0.84rem;
+}
+
+.room-meta div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.room-meta dt {
+  color: var(--text-muted);
+}
+
+.room-meta dd {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.7;
+  border-radius: 999px;
+  padding: 0.1rem 0.7rem;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.connection-open {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.connection-reconnecting {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.connection-offline {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.copy-row input {
+  /* 折り返しても最低限の幅を確保し、URL が極端に切れないようにする */
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-size: 0.84rem;
+}
+
+.copy-row .button {
+  flex: 0 0 auto;
+}
+
+/* ---------- 参加者一覧 ---------- */
+
+.player-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.player-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  border-radius: var(--radius-small);
+  padding: 0.85rem 1rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+
+.player-item.is-inactive {
+  opacity: 0.62;
+}
+
+.player-item.is-me {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.player-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.player-name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  line-height: 1.7;
+}
+
+.player-name {
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+  margin-right: 0.15rem;
+}
+
+.player-select input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+.rank-tags {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0.65rem 0 0;
+  padding: 0;
+}
+
+/*
+ * 色はランクティアを表す。背景はごく淡く敷く。
+ * flex-shrink を止めないと、狭い画面で「第1希望」が1文字ずつ折り返されてしまう。
+ */
+.rank-tag {
+  display: inline-flex;
+  align-items: baseline;
+  /* 項目の途中では折らず、項目と項目の間だけで折り返す */
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  max-width: 100%;
+  gap: 0.1rem 0.4rem;
+  font-size: 0.76rem;
+  line-height: 1.75;
+  border-radius: 6px;
+  padding: 0.15rem 0.65rem;
+  color: var(--tier, var(--text-muted));
+  background: color-mix(in srgb, var(--tier, var(--text-muted)) 13%, transparent);
+}
+
+/* タグ内の各項目は途中で改行しない */
+.rank-tag > span {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rank-tag.is-tied {
+  outline: 1px dashed color-mix(in srgb, var(--tier, var(--text-muted)) 45%, transparent);
+  outline-offset: -1px;
+}
+
+.rank-tag-order {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.rank-tag-role {
+  font-weight: 600;
+}
+
+.rank-tag-rank {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.95;
+}
+
+.rank-tag-note {
+  align-self: flex-start;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+}
+
+.my-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-small);
+  padding: 1.1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  margin: 1rem 0 0;
+}
+
+.loading {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 1.4rem 0;
+  margin: 0;
+}
+
+.reason-list {
+  margin: 1.1rem 0 0;
+  padding: 0.75rem 0.95rem 0.75rem 2.1rem;
+  background: var(--warn-soft);
+  border-radius: var(--radius-small);
+  color: var(--warn);
+  font-size: 0.86rem;
+}
+
+/* ---------- チーム候補 ---------- */
+
+.candidate-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+  margin-top: 1rem;
+}
+
+.candidate-card {
+  border-radius: var(--radius-small);
+  padding: 1.1rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+
+.candidate-card.is-selected {
+  border-color: var(--success);
+}
+
+.candidate-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.candidate-header h3 {
+  margin: 0;
+}
+
+/* 指標は箱で区切らず、余白と区切り線で並べる */
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.6rem;
+  margin: 0.9rem 0 1.1rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.metrics div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.metrics dt {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.metrics dd {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.teams {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: 1fr;
+}
+
+.team-block {
+  border-radius: var(--radius-small);
+  padding: 0.9rem 1rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--team-color, var(--border-strong));
+}
+
+.team-a {
+  --team-color: var(--team-a);
+}
+
+.team-b {
+  --team-color: var(--team-b);
+}
+
+.team-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 絵文字は彩度が高いので小さく控えめに置く */
+.team-mark {
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.team-heading h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  color: var(--team-color, var(--text-strong));
+}
+
+.team-total {
+  margin-left: auto;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.team-members {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.team-member {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  flex-wrap: wrap;
+  font-size: 0.87rem;
+  line-height: 1.7;
+}
+
+.team-member-name {
+  /* 長い名前だけを折り返し対象にする（伸ばさないことで行頭を揃える） */
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+/* ランクはティア色 */
+.team-member-rank {
+  flex-shrink: 0;
+  color: var(--tier, var(--text-muted));
+  font-size: 0.79rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pref-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border-radius: 999px;
+  padding: 0.05rem 0.6rem;
+  white-space: nowrap;
+}
+
+.pref-badge.pref-first {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.copy-fallback {
+  margin-top: 1.1rem;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.copy-fallback textarea {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+}
+
+/* ---------- ダイアログ・トースト ---------- */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(20 22 28 / 45%);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.dialog {
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 1.5rem;
+  max-width: 430px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgb(20 22 28 / 18%);
+}
+
+.dialog h2 {
+  margin-top: 0;
+}
+
+.dialog p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.4rem;
+}
+
+.toast-region {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone, var(--accent));
+  border-radius: var(--radius-small);
+  box-shadow: 0 4px 20px rgb(20 22 28 / 14%);
+  padding: 0.7rem 1rem;
+  font-size: 0.88rem;
+  max-width: 480px;
+}
+
+.toast-success {
+  --tone: var(--success);
+}
+
+.toast-error {
+  --tone: var(--danger);
+}
+
+.toast-info {
+  --tone: var(--accent);
+}
+
+.toast-icon {
+  font-weight: 700;
+  color: var(--tone, var(--accent));
+}
+
+/* ---------- 画面幅が広い場合 ---------- */
+
+@media (min-width: 760px) {
+  .teams {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .page {
+    padding: 2rem 1.5rem 3.5rem;
+  }
+
+  .card {
+    padding: 1.6rem 1.5rem;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* 未計測（推定）の表示 */
+.estimated-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+  font-size: 0.79rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.estimated-toggle input {
+  accent-color: var(--accent);
+}
+
+.rank-tag-estimated,
+.rank-estimated-mark {
+  font-size: 0.9em;
+  opacity: 0.75;
+}
+
+.rank-tag-estimated::before {
+  content: '/ ';
+}
+
+/* プレイ歴（自己申告） */
+.rank-field-extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.55rem;
+}
+
+.experience-select select {
+  width: auto;
+  min-width: 11rem;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.82rem;
+}
+
+.rank-field-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: var(--warn);
+}
+
+.rank-tag-experience {
+  font-size: 0.9em;
+  opacity: 0.75;
+}
+
+.rank-tag-experience::before {
+  content: '/ ';
+}
+
+/* ディビジョンを持たないティア（Champion）の表示 */
+.rank-no-division {
+  flex: 1 1 0;
+  min-width: 0;
+  align-self: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  padding-left: 0.2rem;
+}
+
+/* ---------- 狭い画面向けの調整 ---------- */
+
+@media (max-width: 480px) {
+  .page {
+    padding: 1.1rem 0.9rem 2.5rem;
+  }
+
+  .card {
+    padding: 1.1rem 1rem;
+  }
+
+  /* ランクタグは1行1件にして、内容が詰まらないようにする */
+  .rank-tags {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rank-tag {
+    justify-content: flex-start;
+  }
+
+  /* 未計測チェックとプレイ歴は縦に積む */
+  .rank-field-extra {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.55rem;
+  }
+
+  .experience-select select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* 参加者用URLは全幅にしてコピーボタンを下へ */
+  .copy-row input {
+    flex-basis: 100%;
+  }
+
+  .copy-row .button {
+    width: 100%;
+  }
+
+  /* 主催者の操作ボタンは幅いっぱいに並べて押しやすくする */
+  .host-panel .button-row .button {
+    flex: 1 1 100%;
+  }
+
+  .metrics {
+    gap: 0.35rem 1.1rem;
+  }
+
+  /*
+   * チームメンバー行は、折り返したときに希望バッジだけが右端へ飛ぶと
+   * 行の見た目がばらつくため、狭い画面では左詰めで流す。
+   */
+  .team-member {
+    align-items: baseline;
+    row-gap: 0.2rem;
+  }
+
+  .team-member .pref-badge {
+    margin-left: 0;
+  }
+
+  .team-member-rank {
+    white-space: normal;
+  }
+}
