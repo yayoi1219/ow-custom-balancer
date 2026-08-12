@@ -271,7 +271,11 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       if (!body.ok) return body.response;
       const parsed = selectCandidateRequestSchema.safeParse(body.value);
       if (!parsed.success) return validationError(formatIssues(parsed.error));
-      return respond(await stub.selectCandidate(token, parsed.data.candidateId));
+      // 生成した候補を選ぶ場合と、主催者が手動調整した編成を送る場合がある
+      if ('candidateId' in parsed.data) {
+        return respond(await stub.selectCandidate(token, parsed.data.candidateId));
+      }
+      return respond(await stub.selectLineup(token, parsed.data.lineup));
     }
     if (request.method === 'DELETE') {
       return respond(await stub.clearSelectedCandidate(token));

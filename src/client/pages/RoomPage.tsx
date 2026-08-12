@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MAX_PLAYERS, REQUIRED_ACTIVE_PLAYERS, SERVICE_NAME } from '../../shared/constants';
+import type { LineupSlot } from '../../shared/balancer';
 import { formatDiscordResult } from '../../shared/discord';
 import type {
   PlayerInput,
@@ -11,6 +12,7 @@ import type {
   ViewerInfo,
 } from '../../shared/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { LineupEditor } from '../components/LineupEditor';
 import { ConnectionBadge } from '../components/ConnectionBadge';
 import { PlayerForm } from '../components/PlayerForm';
 import { PlayerList, RoleRankTags } from '../components/PlayerList';
@@ -90,6 +92,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
   const [pending, setPending] = useState<PendingAction>({ kind: 'none' });
   const [selection, setSelection] = useState<string[]>([]);
   const [lineupReasons, setLineupReasons] = useState<string[]>([]);
+  const [editingLineup, setEditingLineup] = useState(false);
 
   useEffect(() => {
     document.title = room ? `${room.title} - ${SERVICE_NAME}` : SERVICE_NAME;
@@ -271,6 +274,16 @@ export function RoomPage({ roomId }: { roomId: string }) {
       channel.applyState(result.room, result.viewer);
       showToast('チームを確定しました。');
     }, 'チームの確定に失敗しました。');
+  };
+
+  /** 主催者が手動調整した編成を確定する */
+  const handleSaveLineup = (lineup: LineupSlot[]): void => {
+    void runHostAction(async (token) => {
+      const result = await api.selectLineup(roomId, lineup, token);
+      channel.applyState(result.room, result.viewer);
+      setEditingLineup(false);
+      showToast('手動調整した編成で確定しました。');
+    }, '編成の確定に失敗しました。');
   };
 
   const handleClearSelection = (): void => {
@@ -603,18 +616,40 @@ export function RoomPage({ roomId }: { roomId: string }) {
           <div className="card-header">
             <h2>確定チーム</h2>
           </div>
-          <SelectedTeams candidate={room.selectedCandidate} />
-          <div className="button-row">
-            <button
-              type="button"
-              className="button button-primary"
-              onClick={() =>
-                void copyToClipboard(discordText, 'Discord用テキストをコピーしました。')
-              }
-            >
-              Discord用テキストをコピー
-            </button>
-          </div>
+          {editingLineup && isHost ? (
+            <LineupEditor
+              candidate={room.selectedCandidate}
+              players={players.filter((player) => player.active)}
+              busy={busy}
+              onSave={handleSaveLineup}
+              onCancel={() => setEditingLineup(false)}
+            />
+          ) : (
+            <>
+              <SelectedTeams candidate={room.selectedCandidate} />
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button button-primary"
+                  onClick={() =>
+                    void copyToClipboard(discordText, 'Discord用テキストをコピーしました。')
+                  }
+                >
+                  Discord用テキストをコピー
+                </button>
+                {isHost ? (
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => setEditingLineup(true)}
+                    disabled={busy}
+                  >
+                    手動で入れ替える
+                  </button>
+                ) : null}
+              </div>
+            </>
+          )}
           <details className="copy-fallback">
             <summary>コピーできない場合はこちら</summary>
             <textarea readOnly rows={12} value={discordText} aria-label="Discord用テキスト" />

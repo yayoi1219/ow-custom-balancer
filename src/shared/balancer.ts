@@ -20,7 +20,7 @@ import {
 } from './constants';
 import { preferenceIndexOf, type PreferenceGroups } from './preferences';
 import { MAX_RANK_SCORE, MIN_RANK_SCORE } from './ranks';
-import type { AssignedPlayer, TeamCandidate, TeamComposition } from './types';
+import type { AssignedPlayer, TeamCandidate, TeamComposition, TeamSide } from './types';
 
 /** チーム分けへ渡す1人分の入力。ランクは 0〜39 のスコア。 */
 export interface BalancePlayer {
@@ -203,13 +203,7 @@ export function generateTeamCandidates(input: BalancePlayer[]): BalanceResult {
   const n = players.length;
 
   // 希望順位ペナルティを事前計算（ロール割り当てが決まれば分割に依存しない）
-  const penaltyOf: Array<Partial<Record<Role, number>>> = players.map((player) => {
-    const map: Partial<Record<Role, number>> = {};
-    for (const role of player.eligibleRoles) {
-      map[role] = preferencePenaltyFor(preferenceIndexOf(player.rolePreferenceGroups, role));
-    }
-    return map;
-  });
+  const penaltyOf = buildPenaltyMap(players);
 
   // suffixCount[s][i] = i 以降の参加者のうち、部分集合 s のいずれかを担当できる人数
   const suffixCount: number[][] = ROLE_SUBSETS.map(() => new Array<number>(n + 1).fill(0));
@@ -363,6 +357,152 @@ export function generateTeamCandidates(input: BalancePlayer[]): BalanceResult {
 
   const candidates = top.map((candidate) => toTeamCandidate(players, penaltyOf, candidate));
   return { ok: true, candidates };
+}
+
+/** 手動調整された編成を表す1人分の割り当て */
+export interface LineupSlot {
+  playerId: string;
+  role: Role;
+  team: TeamSide;
+}
+
+export type EvaluateLineupResult =
+  { ok: true; candidate: TeamCandidate } | { ok: false; message: string; reasons: string[] };
+
+/**
+ * 指定された編成をそのまま評価する（自動生成と同じ計算式を使う）。
+ *
+ * 主催者が手動で入れ替えた編成を、生成した候補と同じ指標で比較できるようにするためのもの。
+ * サーバー側でも同じ関数で検証するため、クライアントの申告を信用しない。
+ */
+export function evaluateLineup(input: BalancePlayer[], lineup: LineupSlot[]): EvaluateLineupResult {
+  const invalidReasons = validateInput(input);
+  if (invalidReasons.length > 0) {
+    return { ok: false, message: invalidReasons[0], reasons: invalidReasons };
+  }
+
+  const players = [...input].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const indexOf = new Map(players.map((player, index) => [player.id, index]));
+
+  const reasons: string[] = [];
+  if (lineup.length !== REQUIRED_ACTIVE_PLAYERS) {
+    reasons.push(`編成には${REQUIRED_ACTIVE_PLAYERS}人が必要です（現在${lineup.length}人）。`);
+    return { ok: false, message: reasons[0], reasons };
+  }
+
+  const seen = new Set<string>();
+  const teams: Record<TeamSide, Array<{ index: number; role: Role }>> = { A: [], B: [] };
+  for (const slot of lineup) {
+    const index = indexOf.get(slot.playerId);
+    if (index === undefined) {
+      reasons.push('編成に参加者以外が含まれています。');
+      continue;
+    }
+    if (seen.has(slot.playerId)) {
+      reasons.push(`${players[index].displayName} が重複しています。`);
+      continue;
+    }
+    seen.add(slot.playerId);
+    if (!players[index].eligibleRoles.includes(slot.role)) {
+      reasons.push(`${players[index].displayName} は ${ROLE_LABELS[slot.role]} を担当できません。`);
+      continue;
+    }
+    teams[slot.team].push({ index, role: slot.role });
+  }
+  if (reasons.length > 0) {
+    return { ok: false, message: reasons[0], reasons };
+  }
+
+  // 各チームのロール枠がロールキュー構成どおりか確認する
+  for (const side of ['A', 'B'] as TeamSide[]) {
+    for (const role of ROLES) {
+      const count = teams[side].filter((slot) => slot.role === role).length;
+      if (count !== TEAM_ROLE_SLOTS[role]) {
+        reasons.push(
+          `Team ${side} の ${ROLE_LABELS[role]} は${TEAM_ROLE_SLOTS[role]}人である必要があります（現在${count}人）。`,
+        );
+      }
+    }
+  }
+  if (reasons.length > 0) {
+    return { ok: false, message: reasons[0], reasons };
+  }
+
+  const penaltyOf = buildPenaltyMap(players);
+  const scored = scoreSplit(players, penaltyOf, teams.A, teams.B);
+  return { ok: true, candidate: toTeamCandidate(players, penaltyOf, scored) };
+}
+
+/** 希望順位ペナルティの早見表を作る */
+function buildPenaltyMap(players: BalancePlayer[]): Array<Partial<Record<Role, number>>> {
+  return players.map((player) => {
+    const map: Partial<Record<Role, number>> = {};
+    for (const role of player.eligibleRoles) {
+      map[role] = preferencePenaltyFor(preferenceIndexOf(player.rolePreferenceGroups, role));
+    }
+    return map;
+  });
+}
+
+/** 確定した分割から指標とスコアを計算する（自動生成・手動調整で共通） */
+function scoreSplit(
+  players: BalancePlayer[],
+  penaltyOf: Array<Partial<Record<Role, number>>>,
+  teamA: Array<{ index: number; role: Role }>,
+  teamB: Array<{ index: number; role: Role }>,
+): ScoredCandidate {
+  const ratingAt = (slot: { index: number; role: Role }): number => {
+    const player = players[slot.index];
+    return player.roleRatings?.[slot.role] ?? player.roleRanks[slot.role] ?? 0;
+  };
+  const pick = (team: Array<{ index: number; role: Role }>, role: Role): number[] =>
+    team.filter((slot) => slot.role === role).map(ratingAt);
+
+  const tankA = pick(teamA, 'tank')[0] ?? 0;
+  const tankB = pick(teamB, 'tank')[0] ?? 0;
+  const dmgA = pick(teamA, 'damage');
+  const dmgB = pick(teamB, 'damage');
+  const supA = pick(teamA, 'support');
+  const supB = pick(teamB, 'support');
+  const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
+
+  const tankRankDiff = Math.abs(tankA - tankB);
+  const damageAvgDiff = Math.abs(sum(dmgA) - sum(dmgB)) / TEAM_ROLE_SLOTS.damage;
+  const supportAvgDiff = Math.abs(sum(supA) - sum(supB)) / TEAM_ROLE_SLOTS.support;
+  const totalRankDiff = Math.abs(tankA + sum(dmgA) + sum(supA) - (tankB + sum(dmgB) + sum(supB)));
+
+  const sortedA = [tankA, ...dmgA, ...supA].sort((a, b) => b - a);
+  const sortedB = [tankB, ...dmgB, ...supB].sort((a, b) => b - a);
+  let positionalRankDiff = 0;
+  for (let slot = 0; slot < sortedA.length; slot += 1) {
+    positionalRankDiff += Math.abs(sortedA[slot] - sortedB[slot]);
+  }
+
+  let preferencePenalty = 0;
+  for (const slot of [...teamA, ...teamB]) {
+    preferencePenalty += penaltyOf[slot.index][slot.role] ?? PREFERENCE_PENALTY_FALLBACK;
+  }
+
+  const score =
+    BALANCE_WEIGHTS.totalRankDiff * totalRankDiff +
+    BALANCE_WEIGHTS.tankRankDiff * tankRankDiff +
+    BALANCE_WEIGHTS.damageAvgDiff * damageAvgDiff +
+    BALANCE_WEIGHTS.supportAvgDiff * supportAvgDiff +
+    BALANCE_WEIGHTS.positionalRankDiff * positionalRankDiff +
+    preferencePenalty;
+
+  return {
+    key: canonicalKey(players, teamA, teamB),
+    score,
+    totalRankDiff,
+    tankRankDiff,
+    damageAvgDiff,
+    supportAvgDiff,
+    positionalRankDiff,
+    preferencePenalty,
+    teamA,
+    teamB,
+  };
 }
 
 /** チーム構成から鏡像を区別しない一意キーを作る */

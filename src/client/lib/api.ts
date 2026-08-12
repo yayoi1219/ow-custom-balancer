@@ -1,5 +1,6 @@
 /** API クライアント。統一されたエラー形式を扱う。 */
 
+import type { LineupSlot } from '../../shared/balancer';
 import { AUTH_HEADER } from '../../shared/constants';
 import {
   ERROR_CODES,
@@ -165,6 +166,14 @@ export const api = {
     request<RoomStateResponse>(`/api/rooms/${encodeURIComponent(roomId)}/selected-candidate`, {
       method: 'POST',
       body: { candidateId },
+      token,
+    }),
+
+  /** 主催者が手動調整した編成を確定する */
+  selectLineup: (roomId: string, lineup: LineupSlot[], token: string): Promise<RoomStateResponse> =>
+    request<RoomStateResponse>(`/api/rooms/${encodeURIComponent(roomId)}/selected-candidate`, {
+      method: 'POST',
+      body: { lineup },
       token,
     }),
 

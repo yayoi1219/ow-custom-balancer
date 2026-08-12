@@ -477,6 +477,89 @@ describe('アクティブ参加者とチーム分け', () => {
     expect(cleared.body.data?.room.selectedCandidate).toBeNull();
   });
 
+  it('手動調整した編成を確定できる', async () => {
+    const room = await createRoom();
+    await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS);
+    const generated = await callApi<TeamCandidatesResponse>(
+      `/api/rooms/${room.roomId}/team-candidates`,
+      { method: 'POST', token: room.hostToken },
+    );
+    const candidate = generated.body.data?.candidates[0];
+    if (!candidate) throw new Error('no candidate');
+
+    // Tank 同士を入れ替えた編成を送る
+    const lineup = [
+      ...candidate.teamA.players.map((p) => ({ playerId: p.playerId, role: p.role, team: 'A' })),
+      ...candidate.teamB.players.map((p) => ({ playerId: p.playerId, role: p.role, team: 'B' })),
+    ];
+    const tankA = lineup.find((slot) => slot.role === 'tank' && slot.team === 'A');
+    const tankB = lineup.find((slot) => slot.role === 'tank' && slot.team === 'B');
+    if (!tankA || !tankB) throw new Error('no tanks');
+    tankA.team = 'B';
+    tankB.team = 'A';
+
+    const result = await callApi<RoomStateResponse>(
+      `/api/rooms/${room.roomId}/selected-candidate`,
+      { method: 'POST', body: { lineup }, token: room.hostToken },
+    );
+    expect(result.status).toBe(200);
+    const selected = result.body.data?.room.selectedCandidate;
+    expect(selected).toBeTruthy();
+    // 送った編成どおりに保存されている
+    expect(selected?.teamA.players.find((p) => p.role === 'tank')?.playerId).toBe(tankB.playerId);
+  });
+
+  it('主催者以外は手動編成を確定できない', async () => {
+    const room = await createRoom();
+    const credentials = await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS);
+    const lineup = credentials.map((credential, index) => ({
+      playerId: credential.playerId,
+      role: index < 2 ? 'tank' : index < 6 ? 'damage' : 'support',
+      team: index % 2 === 0 ? 'A' : 'B',
+    }));
+    const result = await callApi(`/api/rooms/${room.roomId}/selected-candidate`, {
+      method: 'POST',
+      body: { lineup },
+      token: credentials[0].editToken,
+    });
+    expect(result.status).toBe(403);
+  });
+
+  it('不正な手動編成はサーバー側で拒否する', async () => {
+    const room = await createRoom();
+    const credentials = await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS, () => ['tank']);
+    // 全員 Tank 専任なので、Damage/Support 枠へは置けない
+    const lineup = credentials.map((credential, index) => ({
+      playerId: credential.playerId,
+      role: index < 2 ? 'tank' : index < 6 ? 'damage' : 'support',
+      team: index % 2 === 0 ? 'A' : 'B',
+    }));
+    const result = await callApi(`/api/rooms/${room.roomId}/selected-candidate`, {
+      method: 'POST',
+      body: { lineup },
+      token: room.hostToken,
+    });
+    expect(result.status).toBe(400);
+    expect(result.body.error?.code).toBe(ERROR_CODES.VALIDATION_ERROR);
+  });
+
+  it('人数が10人でない手動編成は拒否する', async () => {
+    const room = await createRoom();
+    const credentials = await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS);
+    const result = await callApi(`/api/rooms/${room.roomId}/selected-candidate`, {
+      method: 'POST',
+      body: {
+        lineup: credentials.slice(0, 9).map((credential) => ({
+          playerId: credential.playerId,
+          role: 'tank',
+          team: 'A',
+        })),
+      },
+      token: room.hostToken,
+    });
+    expect(result.status).toBe(400);
+  });
+
   it('存在しない候補IDは確定できない', async () => {
     const room = await createRoom();
     await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS);

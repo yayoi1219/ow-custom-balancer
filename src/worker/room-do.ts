@@ -9,18 +9,12 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
-import {
-  MAX_PLAYERS,
-  REQUIRED_ACTIVE_PLAYERS,
-  ROOM_TTL_MS,
-  type Role,
-  type RoleExperience,
-} from '../shared/constants';
+import { MAX_PLAYERS, REQUIRED_ACTIVE_PLAYERS, ROOM_TTL_MS, type Role } from '../shared/constants';
 import { ERROR_CODES, errorMessageFor, type ErrorCode } from '../shared/errors';
-import { generateTeamCandidates, type BalancePlayer } from '../shared/balancer';
+import { evaluateLineup, generateTeamCandidates, type LineupSlot } from '../shared/balancer';
+import { toBalancePlayers } from '../shared/lineup';
 import { normalizePreferenceGroups, type PreferenceGroups } from '../shared/preferences';
 import { normalizeLegacyRank } from '../shared/ranks';
-import { computeRating } from '../shared/rating';
 import type {
   JoinRoomResponse,
   PlayerPublic,
@@ -833,33 +827,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       );
     }
 
-    const balanceInput: BalancePlayer[] = activePlayers.map((player) => {
-      const roleRanks: Partial<Record<Role, number>> = {};
-      const roleRatings: Partial<Record<Role, number>> = {};
-      const estimatedRanks: Partial<Record<Role, boolean>> = {};
-      const roleExperiences: Partial<Record<Role, RoleExperience>> = {};
-      for (const role of player.eligibleRoles) {
-        const rank = player.roleRanks[role];
-        if (rank) {
-          // ランク + プレイ歴から内部レートを求める
-          const rating = computeRating({ rank, experience: rank.experience });
-          roleRanks[role] = rating.rankScore;
-          roleRatings[role] = rating.rating;
-          if (rank.estimated) estimatedRanks[role] = true;
-          if (rank.experience) roleExperiences[role] = rank.experience;
-        }
-      }
-      return {
-        id: player.id,
-        displayName: player.displayName,
-        eligibleRoles: player.eligibleRoles,
-        rolePreferenceGroups: player.rolePreferenceGroups,
-        roleRanks,
-        roleRatings,
-        estimatedRanks,
-        roleExperiences,
-      };
-    });
+    const balanceInput = toBalancePlayers(activePlayers);
 
     const balanced = generateTeamCandidates(balanceInput);
     if (!balanced.ok) {
@@ -903,6 +871,49 @@ export class RoomDurableObject extends DurableObject<Env> {
 
     this.ctx.storage.transactionSync(() => {
       this.sql.exec(`UPDATE room SET selected_candidate = ?;`, JSON.stringify(chosen));
+      this.bumpVersion();
+    });
+    this.broadcast();
+
+    const updated = this.loadRoom();
+    if (!updated) return fail(ERROR_CODES.INTERNAL_ERROR, 500);
+    return {
+      ok: true,
+      data: { room: this.snapshot(updated, true), viewer: { role: 'host', playerId: null } },
+    };
+  }
+
+  /**
+   * 主催者が手動調整した編成を確定する（主催者のみ）。
+   * クライアントの申告は信用せず、サーバー側で同じ関数を使って検証・採点する。
+   */
+  async selectLineup(
+    token: string | null,
+    lineup: LineupSlot[],
+  ): Promise<DoResult<RoomStateResponse>> {
+    const live = await this.ensureLive();
+    if (!live.ok) return live;
+    const auth = await this.requireHost(live.data, token);
+    if (!auth.ok) return auth;
+
+    const activePlayers = this.loadPlayers()
+      .filter((row) => row.active === 1)
+      .map((row) => this.toPlayerPublic(row));
+    if (activePlayers.length !== REQUIRED_ACTIVE_PLAYERS) {
+      return fail(
+        ERROR_CODES.ACTIVE_COUNT_INVALID,
+        409,
+        `チーム分けにはアクティブ参加者がちょうど${REQUIRED_ACTIVE_PLAYERS}人必要です（現在${activePlayers.length}人）。`,
+      );
+    }
+
+    const evaluated = evaluateLineup(toBalancePlayers(activePlayers), lineup);
+    if (!evaluated.ok) {
+      return fail(ERROR_CODES.VALIDATION_ERROR, 400, evaluated.message, evaluated.reasons);
+    }
+
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(`UPDATE room SET selected_candidate = ?;`, JSON.stringify(evaluated.candidate));
       this.bumpVersion();
     });
     this.broadcast();

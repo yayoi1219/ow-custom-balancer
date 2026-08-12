@@ -242,9 +242,27 @@ export const updateActivePlayersRequestSchema = z.object({
     }),
 });
 
-export const selectCandidateRequestSchema = z.object({
-  candidateId: z.string().min(1).max(64),
-});
+/** 手動調整した編成（10人分の配置） */
+export const lineupSchema = z
+  .array(
+    z.object({
+      playerId: z.string().min(1).max(64),
+      role: roleSchema,
+      team: z.enum(['A', 'B']),
+    }),
+  )
+  .length(REQUIRED_ACTIVE_PLAYERS, {
+    message: `編成には${REQUIRED_ACTIVE_PLAYERS}人が必要です。`,
+  });
+
+/**
+ * チーム確定のリクエスト。
+ * 生成した候補を選ぶ場合と、主催者が手動調整した編成を送る場合がある。
+ */
+export const selectCandidateRequestSchema = z.union([
+  z.object({ candidateId: z.string().min(1).max(64) }),
+  z.object({ lineup: lineupSchema }),
+]);
 
 /* --- 保存済み JSON を読み戻すためのスキーマ（型安全な変換） --- */
 
