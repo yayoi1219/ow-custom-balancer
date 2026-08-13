@@ -566,11 +566,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     title: string,
   ): Promise<DoResult<{ hostToken: string; room: RoomSnapshot }>> {
     if (this.loadRoom()) {
-      return fail(
-        ERROR_CODES.BAD_REQUEST,
-        409,
-        '部屋の作成に失敗しました。もう一度お試しください。',
-      );
+      return fail(ERROR_CODES.BAD_REQUEST, 409);
     }
     const now = Date.now();
     const expiresAt = now + ROOM_TTL_MS;
@@ -862,7 +858,10 @@ export class RoomDurableObject extends DurableObject<Env> {
       return fail(
         ERROR_CODES.ACTIVE_COUNT_INVALID,
         409,
-        `チーム分けにはアクティブ参加者がちょうど${REQUIRED_ACTIVE_PLAYERS}人必要です（現在${activePlayers.length}人）。`,
+        getMessages(locale).balance.playerCountMismatch(
+          REQUIRED_ACTIVE_PLAYERS,
+          activePlayers.length,
+        ),
       );
     }
 
@@ -943,7 +942,10 @@ export class RoomDurableObject extends DurableObject<Env> {
       return fail(
         ERROR_CODES.ACTIVE_COUNT_INVALID,
         409,
-        `チーム分けにはアクティブ参加者がちょうど${REQUIRED_ACTIVE_PLAYERS}人必要です（現在${activePlayers.length}人）。`,
+        getMessages(locale).balance.playerCountMismatch(
+          REQUIRED_ACTIVE_PLAYERS,
+          activePlayers.length,
+        ),
       );
     }
 
@@ -969,7 +971,7 @@ export class RoomDurableObject extends DurableObject<Env> {
   /* ---------------- キャプテンドラフト ---------------- */
 
   /** アクティブ参加者を取得し、10人でなければエラーを返す */
-  private requireActiveRoster(): DoResult<PlayerPublic[]> {
+  private requireActiveRoster(locale: Locale): DoResult<PlayerPublic[]> {
     const activePlayers = this.loadPlayers()
       .filter((row) => row.active === 1)
       .map((row) => this.toPlayerPublic(row));
@@ -977,7 +979,10 @@ export class RoomDurableObject extends DurableObject<Env> {
       return fail(
         ERROR_CODES.ACTIVE_COUNT_INVALID,
         409,
-        `チーム分けにはアクティブ参加者がちょうど${REQUIRED_ACTIVE_PLAYERS}人必要です（現在${activePlayers.length}人）。`,
+        getMessages(locale).balance.playerCountMismatch(
+          REQUIRED_ACTIVE_PLAYERS,
+          activePlayers.length,
+        ),
       );
     }
     return { ok: true, data: activePlayers };
@@ -995,7 +1000,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const auth = await this.requireHost(live.data, token);
     if (!auth.ok) return auth;
 
-    const roster = this.requireActiveRoster();
+    const roster = this.requireActiveRoster(locale);
     if (!roster.ok) return roster;
 
     const started = startDraft(roster.data, captainA, captainB, getMessages(locale));
@@ -1031,7 +1036,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     if (!draft || draft.status !== 'active') {
       return fail(ERROR_CODES.DRAFT_NOT_ACTIVE, 409);
     }
-    const roster = this.requireActiveRoster();
+    const roster = this.requireActiveRoster(locale);
     if (!roster.ok) return roster;
 
     const turn = currentTurn(draft);
@@ -1042,11 +1047,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const isHost = viewer.role === 'host';
     const isCurrentCaptain = viewer.role === 'player' && viewer.playerId === draft.captains[turn];
     if (!isHost && !isCurrentCaptain) {
-      return fail(
-        ERROR_CODES.NOT_YOUR_TURN,
-        403,
-        'いまはあなたの手番ではありません（手番のキャプテンか主催者のみ指名できます）。',
-      );
+      return fail(ERROR_CODES.NOT_YOUR_TURN, 403, getMessages(locale).draftLogic.notYourTurn);
     }
 
     const applied = applyPick(draft, roster.data, pick, getMessages(locale));

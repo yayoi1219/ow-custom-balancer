@@ -223,9 +223,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (section === 'ws' && segments.length === 4) {
     if (request.method !== 'GET') return methodNotAllowed(['GET'], messages);
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
-      return jsonError(ERROR_CODES.BAD_REQUEST, 426, {
-        message: 'WebSocket 接続としてリクエストしてください。',
-      });
+      return jsonError(ERROR_CODES.BAD_REQUEST, 426, { messages });
     }
     // Origin を厳密に確認する（WebSocket には同一オリジンポリシーが適用されないため）
     if (!isSameOrigin(request, url)) return jsonError(ERROR_CODES.FORBIDDEN, 403, { messages });

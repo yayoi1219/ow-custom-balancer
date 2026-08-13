@@ -930,6 +930,39 @@ describe('応答の多言語化', () => {
     expect(result.body.error?.details).not.toContain('roomTitle.required');
   });
 
+  it('アクティブ人数が足りない場合も指定言語で返る', async () => {
+    const room = await createRoom();
+    await seedPlayers(room.roomId, 3);
+    const result = await callApi(`/api/rooms/${room.roomId}/team-candidates`, {
+      method: 'POST',
+      token: room.hostToken,
+      locale: 'en',
+    });
+    expect(result.status).toBe(409);
+    expect(result.body.error?.code).toBe(ERROR_CODES.ACTIVE_COUNT_INVALID);
+    expect(result.body.error?.message).toBe(
+      en.balance.playerCountMismatch(REQUIRED_ACTIVE_PLAYERS, 3),
+    );
+  });
+
+  it('ドラフト開始時のアクティブ人数エラーも指定言語で返る', async () => {
+    const room = await createRoom();
+    await seedPlayers(room.roomId, 3);
+    const result = await callApi(`/api/rooms/${room.roomId}/draft`, {
+      method: 'POST',
+      token: room.hostToken,
+      locale: 'ko',
+      body: {
+        captainA: { playerId: 'x'.repeat(10), role: 'tank' },
+        captainB: { playerId: 'y'.repeat(10), role: 'tank' },
+      },
+    });
+    expect(result.status).toBe(409);
+    expect(result.body.error?.message).toBe(
+      ko.balance.playerCountMismatch(REQUIRED_ACTIVE_PLAYERS, 3),
+    );
+  });
+
   it('チーム分けの失敗理由も指定言語で返る', async () => {
     const room = await createRoom();
     // 全員 Tank しかできないため、有効な構成を作れない
