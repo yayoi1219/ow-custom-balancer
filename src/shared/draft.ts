@@ -10,7 +10,8 @@
  */
 
 import type { LineupSlot } from './balancer';
-import { ROLES, ROLE_LABELS, TEAM_ROLE_SLOTS, type Role } from './constants';
+import { ROLES, TEAM_ROLE_SLOTS, type Role } from './constants';
+import { ja, type Messages } from './i18n/ja';
 import type { DraftPick, DraftState, PlayerPublic, TeamSide } from './types';
 
 /**
@@ -81,20 +82,21 @@ export function startDraft(
   players: PlayerPublic[],
   captainA: { playerId: string; role: Role },
   captainB: { playerId: string; role: Role },
+  messages: Messages = ja,
 ): DraftResult<DraftState> {
   const byId = new Map(players.map((player) => [player.id, player]));
   for (const captain of [captainA, captainB]) {
     const player = byId.get(captain.playerId);
-    if (!player) return { ok: false, message: 'キャプテンに指定された参加者が見つかりません。' };
+    if (!player) return { ok: false, message: messages.draftLogic.captainNotFound };
     if (!player.eligibleRoles.includes(captain.role)) {
       return {
         ok: false,
-        message: `${player.displayName} は ${ROLE_LABELS[captain.role]} を担当できません。`,
+        message: messages.balance.cannotPlayRole(player.displayName, messages.roles[captain.role]),
       };
     }
   }
   if (captainA.playerId === captainB.playerId) {
-    return { ok: false, message: '2人の異なるキャプテンを指定してください。' };
+    return { ok: false, message: messages.draftLogic.captainsMustDiffer };
   }
 
   const draft: DraftState = {
@@ -110,7 +112,7 @@ export function startDraft(
   if (!canFillRemaining(draft, players)) {
     return {
       ok: false,
-      message: 'このキャプテンのロールでは、残りの参加者で構成を埋められません。',
+      message: messages.draftLogic.captainRoleInfeasible,
     };
   }
   return { ok: true, value: draft };
@@ -121,28 +123,29 @@ export function applyPick(
   draft: DraftState,
   players: PlayerPublic[],
   pick: { playerId: string; role: Role },
+  messages: Messages = ja,
 ): DraftResult<DraftState> {
   if (draft.status !== 'active') {
-    return { ok: false, message: 'ドラフトはすでに終了しています。' };
+    return { ok: false, message: messages.draftLogic.alreadyFinished };
   }
   const team = currentTurn(draft);
-  if (!team) return { ok: false, message: 'ドラフトはすでに終了しています。' };
+  if (!team) return { ok: false, message: messages.draftLogic.alreadyFinished };
 
   const player = players.find((entry) => entry.id === pick.playerId);
-  if (!player) return { ok: false, message: '指名された参加者が見つかりません。' };
+  if (!player) return { ok: false, message: messages.draftLogic.playerNotFound };
   if (draft.picks.some((entry) => entry.playerId === pick.playerId)) {
-    return { ok: false, message: `${player.displayName} はすでに指名されています。` };
+    return { ok: false, message: messages.draftLogic.alreadyPicked(player.displayName) };
   }
   if (!player.eligibleRoles.includes(pick.role)) {
     return {
       ok: false,
-      message: `${player.displayName} は ${ROLE_LABELS[pick.role]} を担当できません。`,
+      message: messages.balance.cannotPlayRole(player.displayName, messages.roles[pick.role]),
     };
   }
   if (openSlots(draft, team)[pick.role] <= 0) {
     return {
       ok: false,
-      message: `Team ${team} の ${ROLE_LABELS[pick.role]} はすでに埋まっています。`,
+      message: messages.draftLogic.slotFull(team, messages.roles[pick.role]),
     };
   }
 
@@ -159,7 +162,7 @@ export function applyPick(
   if (next.status === 'active' && !canFillRemaining(next, players)) {
     return {
       ok: false,
-      message: `${player.displayName} を ${ROLE_LABELS[pick.role]} にすると、残りの参加者で構成を埋められなくなります。`,
+      message: messages.draftLogic.wouldBreakLineup(player.displayName, messages.roles[pick.role]),
     };
   }
   return { ok: true, value: next };

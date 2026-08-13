@@ -13,9 +13,17 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- JavaScript が無効な場合は言語切り替えも動かないため、対応言語を併記する -->
     <noscript>
-      このサービスの利用には JavaScript が必要です。ブラウザの設定で JavaScript
-      を有効にしてください。
+      <p lang="ja">
+        このサービスの利用には JavaScript が必要です。ブラウザの設定で JavaScript
+        を有効にしてください。
+      </p>
+      <p lang="en">This service requires JavaScript. Please enable it in your browser settings.</p>
+      <p lang="ko">
+        이 서비스를 이용하려면 JavaScript가 필요합니다. 브라우저 설정에서 활성화해 주세요.
+      </p>
+      <p lang="zh-Hans">使用本服务需要 JavaScript。请在浏览器设置中启用。</p>
     </noscript>
     <script type="module" src="/src/client/main.tsx"></script>
   </body>

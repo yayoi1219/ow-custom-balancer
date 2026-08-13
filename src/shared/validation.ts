@@ -1,6 +1,11 @@
 /**
  * Zod によるサーバー／クライアント共通のバリデーション定義。
  * サーバー側は必ずここを通してから状態を変更する。
+ *
+ * 多言語対応のため、Zod の `message` には訳文ではなく安定したキー
+ * （例: `displayName.tooLong`）を入れる。訳文への変換は
+ * `translateValidationKey()` が行う。キーを増やしたら
+ * `src/shared/i18n/ja.ts` の `validation` にも追加すること。
  */
 
 import { z } from 'zod';
@@ -17,7 +22,7 @@ import {
   ROOM_TITLE_RAW_MAX_LENGTH,
   type Role,
 } from './constants';
-import { RANK_TIERS, RANK_TIER_LABELS, TIER_DIVISION_COUNT } from './ranks';
+import { RANK_TIERS, TIER_DIVISION_COUNT } from './ranks';
 
 /**
  * 制御文字・不可視文字を含むかどうか。
@@ -52,19 +57,19 @@ export function codePointLength(value: string): number {
   return Array.from(value).length;
 }
 
-function normalizedNameSchema(min: number, max: number, rawMax: number, label: string) {
+function normalizedNameSchema(min: number, max: number, rawMax: number, field: string) {
   return z
-    .string({ message: `${label}を入力してください。` })
-    .max(rawMax, { message: `${label}が長すぎます。` })
+    .string({ message: `${field}.required` })
+    .max(rawMax, { message: `${field}.tooLong` })
     .refine((value) => !hasForbiddenChar(value), {
-      message: `${label}に使用できない文字が含まれています。`,
+      message: `${field}.forbiddenChar`,
     })
     .transform((value) => normalizeText(value))
     .refine((value) => codePointLength(value) >= min, {
-      message: `${label}を入力してください。`,
+      message: `${field}.required`,
     })
     .refine((value) => codePointLength(value) <= max, {
-      message: `${label}は${max}文字以内で入力してください。`,
+      message: `${field}.tooLong`,
     });
 }
 
@@ -72,14 +77,14 @@ export const displayNameSchema = normalizedNameSchema(
   DISPLAY_NAME_MIN_LENGTH,
   DISPLAY_NAME_MAX_LENGTH,
   DISPLAY_NAME_RAW_MAX_LENGTH,
-  '表示名',
+  'displayName',
 );
 
 export const roomTitleSchema = normalizedNameSchema(
   ROOM_TITLE_MIN_LENGTH,
   ROOM_TITLE_MAX_LENGTH,
   ROOM_TITLE_RAW_MAX_LENGTH,
-  '部屋名',
+  'roomTitle',
 );
 
 export const roleSchema = z.enum(ROLES);
@@ -106,7 +111,7 @@ export const rankSchema = z
         ctx.addIssue({
           code: 'custom',
           path: ['division'],
-          message: `${RANK_TIER_LABELS[value.tier]} にディビジョンはありません。`,
+          message: 'rank.noDivision',
         });
       }
       return;
@@ -115,7 +120,7 @@ export const rankSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['division'],
-        message: 'ランクのディビジョンを指定してください。',
+        message: 'rank.divisionRequired',
       });
       return;
     }
@@ -123,7 +128,7 @@ export const rankSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['division'],
-        message: 'ランクのディビジョンが不正です。',
+        message: 'rank.divisionInvalid',
       });
     }
   });
@@ -136,8 +141,8 @@ export const roleRanksSchema = z.object({
 
 const rolesArraySchema = z
   .array(roleSchema)
-  .min(1, { message: '参加可能なロールを1つ以上選択してください。' })
-  .max(ROLES.length, { message: 'ロールの指定が不正です。' });
+  .min(1, { message: 'role.required' })
+  .max(ROLES.length, { message: 'role.invalid' });
 
 /**
  * 希望順位。配列の配列で表し、同じ内側配列に入るロールは同順位（どちらでもよい）。
@@ -145,8 +150,8 @@ const rolesArraySchema = z
  */
 export const preferenceGroupsSchema = z
   .array(z.array(roleSchema).min(1).max(ROLES.length))
-  .min(1, { message: '希望順位を設定してください。' })
-  .max(ROLES.length, { message: '希望順位の指定が不正です。' });
+  .min(1, { message: 'preference.required' })
+  .max(ROLES.length, { message: 'preference.invalid' });
 
 /** 参加登録／更新の入力 */
 export const playerInputSchema = z
@@ -163,7 +168,7 @@ export const playerInputSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['eligibleRoles'],
-        message: '参加可能なロールが重複しています。',
+        message: 'role.duplicate',
       });
       return;
     }
@@ -179,7 +184,7 @@ export const playerInputSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['rolePreferenceGroups'],
-        message: '希望順位は参加可能なロールをすべて1回ずつ含める必要があります。',
+        message: 'preference.mismatch',
       });
     }
 
@@ -191,14 +196,14 @@ export const playerInputSchema = z
         ctx.addIssue({
           code: 'custom',
           path: ['roleRanks', role],
-          message: '参加可能にしたロールのランクを入力してください。',
+          message: 'rank.missing',
         });
       }
       if (!isEligible && hasRank) {
         ctx.addIssue({
           code: 'custom',
           path: ['roleRanks', role],
-          message: '参加可能にしていないロールのランクは指定できません。',
+          message: 'rank.unexpected',
         });
       }
     }
@@ -208,9 +213,9 @@ export type PlayerInputParsed = z.infer<typeof playerInputSchema>;
 
 /** Turnstile トークン */
 export const turnstileTokenSchema = z
-  .string({ message: '認証（Turnstile）を完了してください。' })
-  .min(1, { message: '認証（Turnstile）を完了してください。' })
-  .max(4096, { message: '認証トークンが不正です。' });
+  .string({ message: 'turnstile.required' })
+  .min(1, { message: 'turnstile.required' })
+  .max(4096, { message: 'turnstile.invalid' });
 
 export const createRoomRequestSchema = z.object({
   title: roomTitleSchema,
@@ -233,12 +238,12 @@ export const updateStatusRequestSchema = z.object({
 export const updateActivePlayersRequestSchema = z.object({
   playerIds: z
     .array(z.string().min(1).max(64))
-    .max(MAX_PLAYERS, { message: '選択できる人数を超えています。' })
+    .max(MAX_PLAYERS, { message: 'activePlayers.tooMany' })
     .refine((ids) => new Set(ids).size === ids.length, {
-      message: '同じ参加者が重複して選択されています。',
+      message: 'activePlayers.duplicate',
     })
     .refine((ids) => ids.length <= REQUIRED_ACTIVE_PLAYERS, {
-      message: `アクティブ参加者は最大${REQUIRED_ACTIVE_PLAYERS}人までです。`,
+      message: 'activePlayers.limit',
     }),
 });
 
@@ -252,7 +257,7 @@ export const lineupSchema = z
     }),
   )
   .length(REQUIRED_ACTIVE_PLAYERS, {
-    message: `編成には${REQUIRED_ACTIVE_PLAYERS}人が必要です。`,
+    message: 'lineup.size',
   });
 
 export const startDraftRequestSchema = z.object({
@@ -324,9 +329,12 @@ export const idPathSchema = z
   .string()
   .min(8)
   .max(64)
-  .regex(/^[A-Za-z0-9_-]+$/u, { message: 'IDの形式が不正です。' });
+  .regex(/^[A-Za-z0-9_-]+$/u, { message: 'id.invalid' });
 
-/** Zod のエラーを利用者向けメッセージ配列へ変換する */
+/**
+ * Zod のエラーを、翻訳キーの配列へ変換する（重複は除去）。
+ * 訳文への変換は受け取り側（`translateValidationKeys`）が行う。
+ */
 export function formatIssues(error: z.ZodError): string[] {
   const seen = new Set<string>();
   const messages: string[] = [];

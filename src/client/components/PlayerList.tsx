@@ -1,13 +1,9 @@
 /** 参加者一覧。ロール希望とランクを見やすく表示する。 */
 
-import {
-  REQUIRED_ACTIVE_PLAYERS,
-  ROLE_EXPERIENCE_SHORT_LABELS,
-  ROLE_LABELS,
-  type Role,
-} from '../../shared/constants';
-import { formatRank } from '../../shared/ranks';
+import { REQUIRED_ACTIVE_PLAYERS, type Role } from '../../shared/constants';
+import { formatRankLocalized } from '../../shared/i18n';
 import type { PlayerPublic } from '../../shared/types';
+import { useMessages } from '../hooks/useI18n';
 
 export interface PlayerListProps {
   players: PlayerPublic[];
@@ -28,6 +24,7 @@ export interface PlayerListProps {
  * 色はロールではなく、そのロールでのランクティアを表す。
  */
 export function RoleRankTags({ player }: { player: PlayerPublic }) {
+  const messages = useMessages();
   return (
     <ul className="rank-tags">
       {player.rolePreferenceGroups.map((group, groupIndex) =>
@@ -39,13 +36,19 @@ export function RoleRankTags({ player }: { player: PlayerPublic }) {
               key={role}
               className={`rank-tag tier-${rank ? rank.tier : 'unknown'}${isTied ? ' is-tied' : ''}`}
             >
-              <span className="rank-tag-order">第{groupIndex + 1}希望</span>
-              <span className="rank-tag-role">{ROLE_LABELS[role]}</span>
-              <span className="rank-tag-rank">{rank ? formatRank(rank) : '-'}</span>
-              {rank?.estimated ? <span className="rank-tag-estimated">推定</span> : null}
+              <span className="rank-tag-order">{messages.teams.preferenceNth(groupIndex + 1)}</span>
+              <span className="rank-tag-role">{messages.roles[role]}</span>
+              <span className="rank-tag-rank">
+                {rank ? formatRankLocalized(messages, rank) : '-'}
+              </span>
+              {rank?.estimated ? (
+                <span className="rank-tag-estimated">{messages.playerList.estimatedShort}</span>
+              ) : null}
               {rank?.experience && rank.experience !== 'main' ? (
                 <span className="rank-tag-experience">
-                  {ROLE_EXPERIENCE_SHORT_LABELS[rank.experience]}
+                  {rank.experience === 'sub'
+                    ? messages.experience.subShort
+                    : messages.experience.rareShort}
                 </span>
               ) : null}
             </li>
@@ -53,7 +56,7 @@ export function RoleRankTags({ player }: { player: PlayerPublic }) {
         }),
       )}
       {player.rolePreferenceGroups.length === 1 && player.eligibleRoles.length > 1 ? (
-        <li className="rank-tag rank-tag-note">どれでもよい</li>
+        <li className="rank-tag rank-tag-note">{messages.playerList.anyRole}</li>
       ) : null}
     </ul>
   );
@@ -69,13 +72,14 @@ export function PlayerList({
   onEdit,
   busy = false,
 }: PlayerListProps) {
+  const messages = useMessages();
   const activeCount = players.filter((player) => player.active).length;
 
   if (players.length === 0) {
     return (
       <div className="card">
-        <h2>参加者一覧</h2>
-        <p className="empty-state">まだ参加者がいません。参加用URLを共有してください。</p>
+        <h2>{messages.playerList.title}</h2>
+        <p className="empty-state">{messages.playerList.empty}</p>
       </div>
     );
   }
@@ -83,10 +87,10 @@ export function PlayerList({
   return (
     <div className="card">
       <div className="card-header">
-        <h2>参加者一覧</h2>
+        <h2>{messages.playerList.title}</h2>
         <p className="card-meta">
-          {players.length}人 / アクティブ {activeCount}人
-          {selectionEnabled ? `（${REQUIRED_ACTIVE_PLAYERS}人選択してください）` : ''}
+          {messages.playerList.summary(players.length, activeCount)}
+          {selectionEnabled ? messages.playerList.selectHint(REQUIRED_ACTIVE_PLAYERS) : ''}
         </p>
       </div>
       <ul className="player-list">
@@ -108,14 +112,14 @@ export function PlayerList({
                         onChange={(event) => onToggleActive(player.id, event.target.checked)}
                       />
                       <span className="visually-hidden">
-                        {player.displayName} を今回のチーム分けに含める
+                        {messages.playerList.includeInDraw(player.displayName)}
                       </span>
                     </label>
                   ) : null}
                   <span className="player-name">{player.displayName}</span>
-                  {isMe ? <span className="badge badge-me">あなた</span> : null}
+                  {isMe ? <span className="badge badge-me">{messages.playerList.you}</span> : null}
                   <span className={`badge ${player.active ? 'badge-active' : 'badge-inactive'}`}>
-                    {player.active ? '参加中' : '待機'}
+                    {player.active ? messages.playerList.active : messages.playerList.waiting}
                   </span>
                 </div>
                 <RoleRankTags player={player} />
@@ -129,7 +133,7 @@ export function PlayerList({
                       onClick={() => onEdit(player)}
                       disabled={busy}
                     >
-                      修正
+                      {messages.playerList.edit}
                     </button>
                   ) : null}
                   {onRemove ? (
@@ -139,7 +143,7 @@ export function PlayerList({
                       onClick={() => onRemove(player)}
                       disabled={busy}
                     >
-                      削除
+                      {messages.playerList.remove}
                     </button>
                   ) : null}
                 </div>

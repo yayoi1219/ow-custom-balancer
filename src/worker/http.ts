@@ -2,6 +2,7 @@
 
 import { MAX_JSON_BODY_BYTES } from '../shared/constants';
 import { ERROR_CODES, errorMessageFor, type ApiErrorBody, type ErrorCode } from '../shared/errors';
+import type { Messages } from '../shared/i18n';
 import { IS_DEV } from './env';
 
 /** Turnstile のスクリプト／ウィジェット配信元 */
@@ -62,11 +63,17 @@ export function jsonOk<T>(data: T, status = 200, extraHeaders?: Record<string, s
 export function jsonError(
   code: ErrorCode,
   status: number,
-  options?: { message?: string; details?: string[]; headers?: Record<string, string> },
+  options?: {
+    message?: string;
+    details?: string[];
+    headers?: Record<string, string>;
+    /** 応答の言語。省略時は正本である日本語になる。 */
+    messages?: Messages;
+  },
 ): Response {
   const error: ApiErrorBody = {
     code,
-    message: options?.message ?? errorMessageFor(code),
+    message: options?.message ?? errorMessageFor(code, options?.messages),
   };
   if (options?.details && options.details.length > 0) {
     error.details = options.details;
@@ -97,30 +104,30 @@ export type JsonReadResult = { ok: true; value: unknown } | { ok: false; respons
  * JSON ボディを安全に読む。
  * Content-Type の検証とサイズ制限を行う。
  */
-export async function readJsonBody(request: Request): Promise<JsonReadResult> {
+export async function readJsonBody(request: Request, messages?: Messages): Promise<JsonReadResult> {
   const contentType = request.headers.get('content-type') ?? '';
   if (!contentType.toLowerCase().includes('application/json')) {
     return {
       ok: false,
-      response: jsonError(ERROR_CODES.UNSUPPORTED_MEDIA_TYPE, 415),
+      response: jsonError(ERROR_CODES.UNSUPPORTED_MEDIA_TYPE, 415, { messages }),
     };
   }
   const declaredLength = Number(request.headers.get('content-length') ?? '0');
   if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
-    return { ok: false, response: jsonError(ERROR_CODES.PAYLOAD_TOO_LARGE, 413) };
+    return { ok: false, response: jsonError(ERROR_CODES.PAYLOAD_TOO_LARGE, 413, { messages }) };
   }
   let text: string;
   try {
     text = await request.text();
   } catch {
-    return { ok: false, response: jsonError(ERROR_CODES.INVALID_JSON, 400) };
+    return { ok: false, response: jsonError(ERROR_CODES.INVALID_JSON, 400, { messages }) };
   }
   if (new TextEncoder().encode(text).byteLength > MAX_JSON_BODY_BYTES) {
-    return { ok: false, response: jsonError(ERROR_CODES.PAYLOAD_TOO_LARGE, 413) };
+    return { ok: false, response: jsonError(ERROR_CODES.PAYLOAD_TOO_LARGE, 413, { messages }) };
   }
   try {
     return { ok: true, value: JSON.parse(text) as unknown };
   } catch {
-    return { ok: false, response: jsonError(ERROR_CODES.INVALID_JSON, 400) };
+    return { ok: false, response: jsonError(ERROR_CODES.INVALID_JSON, 400, { messages }) };
   }
 }

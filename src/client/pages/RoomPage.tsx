@@ -21,6 +21,7 @@ import { PlayerList, RoleRankTags } from '../components/PlayerList';
 import { SelectedTeams, TeamCandidateCard } from '../components/TeamView';
 import { useToast } from '../components/Toast';
 import { useConfig } from '../hooks/useConfig';
+import { useI18n } from '../hooks/useI18n';
 import { useRoomChannel } from '../hooks/useRoomChannel';
 import { ApiError, api } from '../lib/api';
 import { copyText } from '../lib/clipboard';
@@ -59,6 +60,7 @@ function consumeHostFragment(roomId: string): string | null {
 export function RoomPage({ roomId }: { roomId: string }) {
   const { showToast } = useToast();
   const { config } = useConfig();
+  const { locale, messages } = useI18n();
 
   const [hostToken, setHostToken] = useState<string | null>(null);
   const [playerCredential, setPlayerCredential] = useState<{
@@ -130,22 +132,32 @@ export function RoomPage({ roomId }: { roomId: string }) {
     }
   }, [room, playerCredential, roomId]);
 
-  const handleApiError = useCallback((caught: unknown, fallback: string): string => {
-    if (caught instanceof ApiError) return caught.message;
-    return fallback;
-  }, []);
+  /**
+   * API エラーを画面の言語の文面に変換する。
+   * サーバーは動的な理由（誰がどのロールで、など）も返すため、
+   * コードに対応する定型文がある場合を除き、サーバーの文面を尊重する。
+   */
+  const handleApiError = useCallback(
+    (caught: unknown, fallback: string): string => {
+      if (caught instanceof ApiError) {
+        if (caught.code === 'VALIDATION_ERROR' || caught.code === 'NO_VALID_LINEUP') {
+          return caught.message;
+        }
+        return messages.errors[caught.code] ?? caught.message;
+      }
+      return fallback;
+    },
+    [messages],
+  );
 
   const participantUrl = `${window.location.origin}/room/${roomId}`;
 
   const copyToClipboard = useCallback(
     async (text: string, successMessage: string): Promise<void> => {
       const copied = await copyText(text);
-      showToast(
-        copied ? successMessage : 'コピーできませんでした。テキストを選択してコピーしてください。',
-        copied ? 'success' : 'error',
-      );
+      showToast(copied ? successMessage : messages.copy.failed, copied ? 'success' : 'error');
     },
-    [showToast],
+    [showToast, messages],
   );
 
   /**
@@ -174,9 +186,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
       setPlayerCredential({ playerId: result.playerId, editToken: result.editToken });
       clearDraft(roomId);
       applyPlayerScopedResult(result.room, result.viewer);
-      showToast('参加登録が完了しました。');
+      showToast(messages.player.joined);
     } catch (caught) {
-      setFormError(handleApiError(caught, '参加登録に失敗しました。'));
+      setFormError(handleApiError(caught, messages.player.joinFailed));
       if (caught instanceof ApiError) setFormErrorDetails(caught.details);
     } finally {
       setFormSubmitting(false);
@@ -197,9 +209,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
       );
       applyPlayerScopedResult(result.room, result.viewer);
       setEditing(false);
-      showToast('登録内容を更新しました。');
+      showToast(messages.player.updated);
     } catch (caught) {
-      setFormError(handleApiError(caught, '更新に失敗しました。'));
+      setFormError(handleApiError(caught, messages.player.updateFailed));
       if (caught instanceof ApiError) setFormErrorDetails(caught.details);
     } finally {
       setFormSubmitting(false);
@@ -215,9 +227,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
       setPlayerCredential(null);
       setEditing(false);
       channel.refresh();
-      showToast('参加を辞退しました。');
+      showToast(messages.player.withdrew);
     } catch (caught) {
-      setActionError(handleApiError(caught, '辞退に失敗しました。'));
+      setActionError(handleApiError(caught, messages.player.withdrawFailed));
     } finally {
       setBusy(false);
       setPending({ kind: 'none' });
@@ -246,16 +258,16 @@ export function RoomPage({ roomId }: { roomId: string }) {
     void runHostAction(async (token) => {
       const result = await api.setStatus(roomId, status, token);
       channel.applyState(result.room, result.viewer);
-      showToast(status === 'open' ? '募集を開始しました。' : '募集を締め切りました。');
-    }, '募集状態の変更に失敗しました。');
+      showToast(status === 'open' ? messages.host.statusOpened : messages.host.statusClosed);
+    }, messages.host.statusChangeFailed);
   };
 
   const handleApplySelection = (): void => {
     void runHostAction(async (token) => {
       const result = await api.setActivePlayers(roomId, selection, token);
       channel.applyState(result.room, result.viewer);
-      showToast('アクティブ参加者を更新しました。');
-    }, 'アクティブ参加者の更新に失敗しました。');
+      showToast(messages.host.activeUpdated);
+    }, messages.host.activeUpdateFailed);
   };
 
   const handleGenerate = (): void => {
@@ -264,22 +276,22 @@ export function RoomPage({ roomId }: { roomId: string }) {
       try {
         const result = await api.generateCandidates(roomId, token);
         channel.applyState(result.room, result.viewer);
-        showToast(`チーム候補を${result.candidates.length}件作成しました。`);
+        showToast(messages.host.candidatesCreated(result.candidates.length));
       } catch (caught) {
         if (caught instanceof ApiError && caught.details.length > 0) {
           setLineupReasons(caught.details);
         }
         throw caught;
       }
-    }, 'チーム候補の作成に失敗しました。');
+    }, messages.host.generateFailed);
   };
 
   const handleSelectCandidate = (candidate: TeamCandidate): void => {
     void runHostAction(async (token) => {
       const result = await api.selectCandidate(roomId, candidate.id, token);
       channel.applyState(result.room, result.viewer);
-      showToast('チームを確定しました。');
-    }, 'チームの確定に失敗しました。');
+      showToast(messages.host.teamConfirmed);
+    }, messages.host.confirmFailed);
   };
 
   /* ---------------- キャプテンドラフト ---------------- */
@@ -294,12 +306,12 @@ export function RoomPage({ roomId }: { roomId: string }) {
         const result = await api.startDraft(roomId, captainA, captainB, token);
         channel.applyState(result.room, result.viewer);
         setShowDraftSetup(false);
-        showToast('キャプテンドラフトを開始しました。');
+        showToast(messages.draft.started);
       } catch (caught) {
-        setDraftError(handleApiError(caught, 'ドラフトを開始できませんでした。'));
+        setDraftError(handleApiError(caught, messages.draft.startFailed));
         throw caught;
       }
-    }, 'ドラフトを開始できませんでした。');
+    }, messages.draft.startFailed);
   };
 
   /** 指名は手番のキャプテン本人か主催者が行う。使うトークンもそれに合わせる。 */
@@ -312,7 +324,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
       const result = await api.draftPick(roomId, playerId, role, token);
       channel.applyState(result.room, result.viewer);
     } catch (caught) {
-      setDraftError(handleApiError(caught, '指名に失敗しました。'));
+      setDraftError(handleApiError(caught, messages.draft.pickFailed));
     } finally {
       setBusy(false);
     }
@@ -323,8 +335,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
       const result = await api.cancelDraft(roomId, token);
       channel.applyState(result.room, result.viewer);
       setDraftError(null);
-      showToast('ドラフトを中止しました。');
-    }, 'ドラフトを中止できませんでした。');
+      showToast(messages.draft.cancelled);
+    }, messages.draft.cancelFailed);
   };
 
   /** 主催者が参加者の登録内容を修正する */
@@ -336,10 +348,10 @@ export function RoomPage({ roomId }: { roomId: string }) {
       const result = await api.updatePlayer(roomId, player.id, input, hostToken);
       channel.applyState(result.room, result.viewer);
       setHostEditingPlayer(null);
-      showToast(`${player.displayName} の登録内容を修正しました。`);
+      showToast(messages.host.playerUpdated(player.displayName));
     } catch (caught) {
       // エラーはフォーム内に出す（一覧まで戻らずに直せるように）
-      setHostEditError(handleApiError(caught, '参加者の修正に失敗しました。'));
+      setHostEditError(handleApiError(caught, messages.host.editPlayerFailed));
     } finally {
       setBusy(false);
     }
@@ -351,16 +363,16 @@ export function RoomPage({ roomId }: { roomId: string }) {
       const result = await api.selectLineup(roomId, lineup, token);
       channel.applyState(result.room, result.viewer);
       setEditingLineup(false);
-      showToast('手動調整した編成で確定しました。');
-    }, '編成の確定に失敗しました。');
+      showToast(messages.lineup.saved);
+    }, messages.lineup.saveFailed);
   };
 
   const handleClearSelection = (): void => {
     void runHostAction(async (token) => {
       const result = await api.clearSelectedCandidate(roomId, token);
       channel.applyState(result.room, result.viewer);
-      showToast('確定を解除しました。');
-    }, '確定の解除に失敗しました。');
+      showToast(messages.host.selectionCleared);
+    }, messages.host.clearFailed);
     setPending({ kind: 'none' });
   };
 
@@ -368,8 +380,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
     void runHostAction(async (token) => {
       const result = await api.removePlayer(roomId, player.id, token);
       channel.applyState(result.room, result.viewer);
-      showToast(`${player.displayName} を削除しました。`);
-    }, '参加者の削除に失敗しました。');
+      showToast(messages.host.playerRemoved(player.displayName));
+    }, messages.host.removeFailed);
     setPending({ kind: 'none' });
   };
 
@@ -379,9 +391,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
       clearHostToken(roomId);
       clearPlayerCredential(roomId);
       clearDraft(roomId);
-      showToast('部屋を削除しました。');
+      showToast(messages.host.roomDeleted);
       navigate('/');
-    }, '部屋の削除に失敗しました。');
+    }, messages.host.deleteRoomFailed);
     setPending({ kind: 'none' });
   };
 
@@ -391,7 +403,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
     return (
       <div className="page">
         <div className="card">
-          <p className="loading">読み込み中…</p>
+          <p className="loading">{messages.common.loading}</p>
         </div>
       </div>
     );
@@ -401,10 +413,10 @@ export function RoomPage({ roomId }: { roomId: string }) {
     return (
       <div className="page">
         <div className="card">
-          <h1>部屋が見つかりません</h1>
-          <p>URL が正しいか確認してください。部屋は作成から24時間で削除されます。</p>
+          <h1>{messages.room.notFoundTitle}</h1>
+          <p>{messages.room.notFoundBody}</p>
           <p className="links">
-            <Link href="/">トップページへ戻る</Link>
+            <Link href="/">{messages.common.backToTop}</Link>
           </p>
         </div>
       </div>
@@ -415,12 +427,10 @@ export function RoomPage({ roomId }: { roomId: string }) {
     return (
       <div className="page">
         <div className="card">
-          <h1>この部屋は終了しました</h1>
-          <p>
-            有効期限切れ、または主催者によって削除されたため、参加者情報とチーム結果は削除されました。
-          </p>
+          <h1>{messages.room.expiredTitle}</h1>
+          <p>{messages.room.expiredBody}</p>
           <p className="links">
-            <Link href="/">新しい部屋を作る</Link>
+            <Link href="/">{messages.room.createNewRoom}</Link>
           </p>
         </div>
       </div>
@@ -432,10 +442,10 @@ export function RoomPage({ roomId }: { roomId: string }) {
       <div className="page">
         <div className="card">
           <p className="field-error" role="alert">
-            {channel.errorMessage ?? '部屋の情報を取得できませんでした。'}
+            {channel.errorMessage ?? messages.room.loadFailed}
           </p>
           <button type="button" className="button" onClick={channel.refresh}>
-            再読み込み
+            {messages.common.reload}
           </button>
         </div>
       </div>
@@ -446,7 +456,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
   const activeCount = players.filter((player) => player.active).length;
   const selectionEnabled = isHost && players.length > REQUIRED_ACTIVE_PLAYERS;
   const discordText = room.selectedCandidate
-    ? formatDiscordResult(room.selectedCandidate, room.title)
+    ? formatDiscordResult(room.selectedCandidate, room.title, messages)
     : '';
 
   return (
@@ -456,55 +466,53 @@ export function RoomPage({ roomId }: { roomId: string }) {
           <h1>{room.title}</h1>
           <div className="room-badges">
             <span className={`badge badge-status-${room.status}`}>
-              {room.status === 'open' ? '募集中' : '募集締切'}
+              {room.status === 'open' ? messages.room.recruiting : messages.room.closed}
             </span>
-            {isHost ? <span className="badge badge-host">主催者</span> : null}
+            {isHost ? <span className="badge badge-host">{messages.room.hostBadge}</span> : null}
             <ConnectionBadge state={connection} />
           </div>
         </div>
         <dl className="room-meta">
           <div>
-            <dt>参加者</dt>
-            <dd>
-              {players.length} / {MAX_PLAYERS}人（アクティブ {activeCount}人）
-            </dd>
+            <dt>{messages.room.playersLabel}</dt>
+            <dd>{messages.room.playersValue(players.length, MAX_PLAYERS, activeCount)}</dd>
           </div>
           <div>
-            <dt>有効期限</dt>
+            <dt>{messages.room.expiresAt}</dt>
             <dd>
-              {formatDateTimeLocal(room.expiresAt)}（{formatRemaining(room.expiresAt)}）
+              {formatDateTimeLocal(room.expiresAt, locale)} (
+              {formatRemaining(room.expiresAt, messages)})
             </dd>
           </div>
         </dl>
         {connection === 'reconnecting' || connection === 'offline' ? (
           <p className="notice notice-warn" role="status">
-            {connection === 'offline'
-              ? 'オフラインです。接続が回復すると自動的に再接続します。入力中の内容は保持されます。'
-              : '再接続中です。しばらくお待ちください。'}
+            {connection === 'offline' ? messages.room.offline : messages.room.reconnecting}
           </p>
         ) : null}
       </header>
 
       {isHost ? (
         <section className="card host-panel">
-          <h2>主催者メニュー</h2>
+          <h2>{messages.host.menu}</h2>
           <div className="field">
-            <p className="field-label">参加者用URL</p>
+            <p className="field-label">{messages.host.participantUrl}</p>
             <div className="copy-row">
-              <input type="text" value={participantUrl} readOnly aria-label="参加者用URL" />
+              <input
+                type="text"
+                value={participantUrl}
+                readOnly
+                aria-label={messages.host.participantUrl}
+              />
               <button
                 type="button"
                 className="button"
-                onClick={() =>
-                  void copyToClipboard(participantUrl, '参加者用URLをコピーしました。')
-                }
+                onClick={() => void copyToClipboard(participantUrl, messages.host.urlCopied)}
               >
-                コピー
+                {messages.common.copy}
               </button>
             </div>
-            <p className="field-help">
-              このURLを Discord などに貼ってください。主催者用のURLは共有しないでください。
-            </p>
+            <p className="field-help">{messages.host.participantUrlHelp}</p>
           </div>
 
           <div className="button-row">
@@ -514,7 +522,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
               onClick={() => handleStatusChange(room.status === 'open' ? 'closed' : 'open')}
               disabled={busy}
             >
-              {room.status === 'open' ? '募集を締め切る' : '募集を再開する'}
+              {room.status === 'open'
+                ? messages.host.closeRecruiting
+                : messages.host.reopenRecruiting}
             </button>
             <button
               type="button"
@@ -522,7 +532,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
               onClick={handleGenerate}
               disabled={busy || activeCount !== REQUIRED_ACTIVE_PLAYERS}
             >
-              チーム候補を作成
+              {messages.host.generateCandidates}
             </button>
             {room.selectedCandidate ? (
               <button
@@ -531,7 +541,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
                 onClick={() => setPending({ kind: 'clearSelection' })}
                 disabled={busy}
               >
-                確定を解除
+                {messages.host.clearSelection}
               </button>
             ) : null}
             {!room.draft ? (
@@ -544,7 +554,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
                 }}
                 disabled={busy || activeCount !== REQUIRED_ACTIVE_PLAYERS}
               >
-                キャプテンドラフト
+                {messages.host.captainDraft}
               </button>
             ) : null}
             <button
@@ -553,22 +563,20 @@ export function RoomPage({ roomId }: { roomId: string }) {
               onClick={() => setPending({ kind: 'deleteRoom' })}
               disabled={busy}
             >
-              部屋を削除
+              {messages.host.deleteRoom}
             </button>
           </div>
 
           {activeCount !== REQUIRED_ACTIVE_PLAYERS ? (
             <p className="notice">
-              チーム候補の作成にはアクティブ参加者がちょうど{REQUIRED_ACTIVE_PLAYERS}
-              人必要です（現在
-              {activeCount}人）。
+              {messages.host.activeCountNotice(REQUIRED_ACTIVE_PLAYERS, activeCount)}
             </p>
           ) : null}
 
           {selectionEnabled ? (
             <div className="field">
               <p className="field-label">
-                今回参加する{REQUIRED_ACTIVE_PLAYERS}人を選択（選択中 {selection.length}人）
+                {messages.host.selectActiveLabel(REQUIRED_ACTIVE_PLAYERS, selection.length)}
               </p>
               <button
                 type="button"
@@ -576,11 +584,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
                 onClick={handleApplySelection}
                 disabled={busy || selection.length !== REQUIRED_ACTIVE_PLAYERS}
               >
-                この{REQUIRED_ACTIVE_PLAYERS}人で確定
+                {messages.host.applySelection(REQUIRED_ACTIVE_PLAYERS)}
               </button>
-              <p className="field-help">
-                下の参加者一覧のチェックボックスで選択し、このボタンを押してください。
-              </p>
+              <p className="field-help">{messages.host.selectActiveHelp}</p>
             </div>
           ) : null}
 
@@ -603,7 +609,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
       {myPlayer && !editing ? (
         <section className="card">
           <div className="card-header">
-            <h2>あなたの登録</h2>
+            <h2>{messages.player.myRegistration}</h2>
           </div>
           <p className="my-name">{myPlayer.displayName}</p>
           <RoleRankTags player={myPlayer} />
@@ -614,7 +620,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
               onClick={() => setEditing(true)}
               disabled={busy}
             >
-              登録内容を編集
+              {messages.player.editRegistration}
             </button>
             <button
               type="button"
@@ -622,7 +628,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
               onClick={() => setPending({ kind: 'withdraw' })}
               disabled={busy}
             >
-              参加を辞退
+              {messages.player.withdraw}
             </button>
           </div>
         </section>
@@ -653,8 +659,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
         room.status === 'open' ? (
           players.length >= MAX_PLAYERS ? (
             <section className="card">
-              <h2>参加登録</h2>
-              <p className="empty-state">参加者が上限（{MAX_PLAYERS}人）に達しています。</p>
+              <h2>{messages.player.roomFullTitle}</h2>
+              <p className="empty-state">{messages.player.roomFullBody(MAX_PLAYERS)}</p>
             </section>
           ) : (
             <PlayerForm
@@ -669,8 +675,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
           )
         ) : (
           <section className="card">
-            <h2>参加登録</h2>
-            <p className="empty-state">現在は募集を締め切っています。</p>
+            <h2>{messages.player.roomFullTitle}</h2>
+            <p className="empty-state">{messages.player.closedBody}</p>
           </section>
         )
       ) : null}
@@ -679,7 +685,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
       {isHost && showDraftSetup && !room.draft ? (
         <section className="card">
           <div className="card-header">
-            <h2>キャプテンドラフト</h2>
+            <h2>{messages.draft.title}</h2>
           </div>
           <DraftSetup
             players={players.filter((player) => player.active)}
@@ -697,8 +703,12 @@ export function RoomPage({ roomId }: { roomId: string }) {
       {room.draft ? (
         <section className="card">
           <div className="card-header">
-            <h2>キャプテンドラフト</h2>
-            <p className="card-meta">{room.draft.status === 'completed' ? '完了' : '進行中'}</p>
+            <h2>{messages.draft.title}</h2>
+            <p className="card-meta">
+              {room.draft.status === 'completed'
+                ? messages.draft.completed
+                : messages.draft.inProgress}
+            </p>
           </div>
           <DraftBoard
             draft={room.draft}
@@ -761,7 +771,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
       {room.selectedCandidate ? (
         <section className="card">
           <div className="card-header">
-            <h2>確定チーム</h2>
+            <h2>{messages.teams.confirmedTitle}</h2>
           </div>
           {editingLineup && isHost ? (
             <LineupEditor
@@ -778,11 +788,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
                 <button
                   type="button"
                   className="button button-primary"
-                  onClick={() =>
-                    void copyToClipboard(discordText, 'Discord用テキストをコピーしました。')
-                  }
+                  onClick={() => void copyToClipboard(discordText, messages.teams.copied)}
                 >
-                  Discord用テキストをコピー
+                  {messages.teams.copyDiscord}
                 </button>
                 {isHost ? (
                   <button
@@ -791,15 +799,20 @@ export function RoomPage({ roomId }: { roomId: string }) {
                     onClick={() => setEditingLineup(true)}
                     disabled={busy}
                   >
-                    手動で入れ替える
+                    {messages.teams.manualAdjust}
                   </button>
                 ) : null}
               </div>
             </>
           )}
           <details className="copy-fallback">
-            <summary>コピーできない場合はこちら</summary>
-            <textarea readOnly rows={12} value={discordText} aria-label="Discord用テキスト" />
+            <summary>{messages.teams.copyFallback}</summary>
+            <textarea
+              readOnly
+              rows={12}
+              value={discordText}
+              aria-label={messages.teams.discordTextLabel}
+            />
           </details>
         </section>
       ) : null}
@@ -807,8 +820,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
       {isHost && room.candidates && room.candidates.length > 0 ? (
         <section className="card">
           <div className="card-header">
-            <h2>チーム候補（{room.candidates.length}件）</h2>
-            <p className="card-meta">スコアが低いほどバランスが良い候補です。</p>
+            <h2>{messages.teams.candidatesTitle(room.candidates.length)}</h2>
+            <p className="card-meta">{messages.teams.candidatesHint}</p>
           </div>
           <div className="candidate-grid">
             {room.candidates.map((candidate, index) => (
@@ -827,22 +840,22 @@ export function RoomPage({ roomId }: { roomId: string }) {
 
       <ConfirmDialog
         open={pending.kind === 'withdraw'}
-        title="参加を辞退しますか？"
-        description="登録内容が削除されます。再度参加するには、もう一度登録が必要です。"
-        confirmLabel="辞退する"
+        title={messages.dialog.withdrawTitle}
+        description={messages.dialog.withdrawBody}
+        confirmLabel={messages.dialog.withdrawConfirm}
         busy={busy}
         onConfirm={() => void handleWithdraw()}
         onCancel={() => setPending({ kind: 'none' })}
       />
       <ConfirmDialog
         open={pending.kind === 'removePlayer'}
-        title="この参加者を削除しますか？"
+        title={messages.dialog.removePlayerTitle}
         description={
           pending.kind === 'removePlayer'
-            ? `${pending.player.displayName} の登録内容を削除します。`
+            ? messages.dialog.removePlayerBody(pending.player.displayName)
             : ''
         }
-        confirmLabel="削除する"
+        confirmLabel={messages.dialog.removeConfirm}
         busy={busy}
         onConfirm={() => {
           if (pending.kind === 'removePlayer') handleRemovePlayer(pending.player);
@@ -851,18 +864,18 @@ export function RoomPage({ roomId }: { roomId: string }) {
       />
       <ConfirmDialog
         open={pending.kind === 'deleteRoom'}
-        title="部屋を削除しますか？"
-        description="参加者情報と確定結果がすべて削除され、URLは使用できなくなります。"
-        confirmLabel="削除する"
+        title={messages.dialog.deleteRoomTitle}
+        description={messages.dialog.deleteRoomBody}
+        confirmLabel={messages.dialog.removeConfirm}
         busy={busy}
         onConfirm={handleDeleteRoom}
         onCancel={() => setPending({ kind: 'none' })}
       />
       <ConfirmDialog
         open={pending.kind === 'clearSelection'}
-        title="チームの確定を解除しますか？"
-        description="全参加者の画面から確定結果が消えます。候補からもう一度選び直せます。"
-        confirmLabel="解除する"
+        title={messages.dialog.clearSelectionTitle}
+        description={messages.dialog.clearSelectionBody}
+        confirmLabel={messages.dialog.clearSelectionConfirm}
         busy={busy}
         onConfirm={handleClearSelection}
         onCancel={() => setPending({ kind: 'none' })}

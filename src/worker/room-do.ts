@@ -11,6 +11,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { MAX_PLAYERS, REQUIRED_ACTIVE_PLAYERS, ROOM_TTL_MS, type Role } from '../shared/constants';
 import { ERROR_CODES, errorMessageFor, type ErrorCode } from '../shared/errors';
+import { DEFAULT_LOCALE, getMessages, type Locale } from '../shared/i18n';
 import { evaluateLineup, generateTeamCandidates, type LineupSlot } from '../shared/balancer';
 import { toBalancePlayers } from '../shared/lineup';
 import { applyPick, currentTurn, draftToLineup, startDraft } from '../shared/draft';
@@ -48,7 +49,11 @@ import type { Env } from './env';
 /** DO 呼び出しの統一結果型（例外を投げずにエラーを返す） */
 export type DoResult<T> =
   | { ok: true; data: T }
-  | { ok: false; status: number; code: ErrorCode; message: string; details?: string[] };
+  /**
+   * `message` は動的な文面（誰が・どのロールで、といった具体的な理由）がある場合のみ入る。
+   * 省略された場合は、呼び出し側の Worker がリクエストの言語で `code` から文面を作る。
+   */
+  | { ok: false; status: number; code: ErrorCode; message?: string; details?: string[] };
 
 function fail(
   code: ErrorCode,
@@ -56,7 +61,7 @@ function fail(
   message?: string,
   details?: string[],
 ): DoResult<never> {
-  return { ok: false, status, code, message: message ?? errorMessageFor(code), details };
+  return { ok: false, status, code, message, details };
 }
 
 /**
@@ -840,7 +845,10 @@ export class RoomDurableObject extends DurableObject<Env> {
   }
 
   /** チーム候補の生成（主催者のみ） */
-  async generateCandidates(token: string | null): Promise<DoResult<TeamCandidatesResponse>> {
+  async generateCandidates(
+    token: string | null,
+    locale: Locale = DEFAULT_LOCALE,
+  ): Promise<DoResult<TeamCandidatesResponse>> {
     const live = await this.ensureLive();
     if (!live.ok) return live;
     const auth = await this.requireHost(live.data, token);
@@ -860,7 +868,7 @@ export class RoomDurableObject extends DurableObject<Env> {
 
     const balanceInput = toBalancePlayers(activePlayers);
 
-    const balanced = generateTeamCandidates(balanceInput);
+    const balanced = generateTeamCandidates(balanceInput, getMessages(locale));
     if (!balanced.ok) {
       return fail(ERROR_CODES.NO_VALID_LINEUP, 409, balanced.message, balanced.reasons);
     }
@@ -921,6 +929,7 @@ export class RoomDurableObject extends DurableObject<Env> {
   async selectLineup(
     token: string | null,
     lineup: LineupSlot[],
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<DoResult<RoomStateResponse>> {
     const live = await this.ensureLive();
     if (!live.ok) return live;
@@ -938,7 +947,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       );
     }
 
-    const evaluated = evaluateLineup(toBalancePlayers(activePlayers), lineup);
+    const evaluated = evaluateLineup(toBalancePlayers(activePlayers), lineup, getMessages(locale));
     if (!evaluated.ok) {
       return fail(ERROR_CODES.VALIDATION_ERROR, 400, evaluated.message, evaluated.reasons);
     }
@@ -979,6 +988,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     token: string | null,
     captainA: { playerId: string; role: Role },
     captainB: { playerId: string; role: Role },
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<DoResult<RoomStateResponse>> {
     const live = await this.ensureLive();
     if (!live.ok) return live;
@@ -988,7 +998,7 @@ export class RoomDurableObject extends DurableObject<Env> {
     const roster = this.requireActiveRoster();
     if (!roster.ok) return roster;
 
-    const started = startDraft(roster.data, captainA, captainB);
+    const started = startDraft(roster.data, captainA, captainB, getMessages(locale));
     if (!started.ok) return fail(ERROR_CODES.VALIDATION_ERROR, 400, started.message);
 
     this.ctx.storage.transactionSync(() => {
@@ -1010,6 +1020,7 @@ export class RoomDurableObject extends DurableObject<Env> {
   async draftPick(
     token: string | null,
     pick: { playerId: string; role: Role },
+    locale: Locale = DEFAULT_LOCALE,
   ): Promise<DoResult<RoomStateResponse>> {
     const live = await this.ensureLive();
     if (!live.ok) return live;
@@ -1038,14 +1049,18 @@ export class RoomDurableObject extends DurableObject<Env> {
       );
     }
 
-    const applied = applyPick(draft, roster.data, pick);
+    const applied = applyPick(draft, roster.data, pick, getMessages(locale));
     if (!applied.ok) return fail(ERROR_CODES.VALIDATION_ERROR, 400, applied.message);
 
     const next = applied.value;
     // 全員決まったら、そのままチームとして確定する
     let selected: TeamCandidate | null = null;
     if (next.status === 'completed') {
-      const evaluated = evaluateLineup(toBalancePlayers(roster.data), draftToLineup(next));
+      const evaluated = evaluateLineup(
+        toBalancePlayers(roster.data),
+        draftToLineup(next),
+        getMessages(locale),
+      );
       if (!evaluated.ok) {
         return fail(ERROR_CODES.VALIDATION_ERROR, 400, evaluated.message, evaluated.reasons);
       }

@@ -25,7 +25,8 @@ export function useConfig(): ConfigState {
       })
       .catch((caught: unknown) => {
         if (caught instanceof DOMException && caught.name === 'AbortError') return;
-        setError('設定の取得に失敗しました。ページを再読み込みしてください。');
+        // 文面は言語ごとに変わるため、ここではエラーが起きたことだけを伝える
+        setError('CONFIG_LOAD_FAILED');
         setLoading(false);
       });
     return () => controller.abort();

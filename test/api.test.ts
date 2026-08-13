@@ -7,6 +7,7 @@ import {
   type Role,
 } from '../src/shared/constants';
 import { ERROR_CODES } from '../src/shared/errors';
+import { LOCALE_HEADER, en, ja, ko, zh } from '../src/shared/i18n';
 import type {
   CreateRoomResponse,
   JoinRoomResponse,
@@ -39,12 +40,23 @@ beforeEach(() => {
 
 async function callApi<T>(
   path: string,
-  init: { method?: string; body?: unknown; token?: string; origin?: string } = {},
+  init: {
+    method?: string;
+    body?: unknown;
+    token?: string;
+    origin?: string;
+    /** 応答の言語（画面で選ばれた言語として送る） */
+    locale?: string;
+    /** ブラウザの言語設定 */
+    acceptLanguage?: string;
+  } = {},
 ): Promise<{ status: number; body: ApiEnvelope<T>; headers: Headers }> {
   const headers = new Headers();
   if (init.body !== undefined) headers.set('Content-Type', 'application/json');
   if (init.token) headers.set(AUTH_HEADER, init.token);
   if (init.origin) headers.set('Origin', init.origin);
+  if (init.locale) headers.set(LOCALE_HEADER, init.locale);
+  if (init.acceptLanguage) headers.set('Accept-Language', init.acceptLanguage);
   headers.set('CF-Connecting-IP', currentIp);
   const response = await SELF.fetch(`https://example.com${path}`, {
     method: init.method ?? 'GET',
@@ -879,5 +891,56 @@ describe('WebSocket', () => {
     expect(second.viewer.role).toBe('host');
     expect(second.room.players).toHaveLength(1);
     socket.close();
+  });
+});
+
+describe('応答の多言語化', () => {
+  it('ヘッダーで指定した言語でエラー文面を返す', async () => {
+    const result = await callApi('/api/rooms/does-not-exist-id', { locale: 'en' });
+    expect(result.status).toBe(404);
+    expect(result.body.error?.code).toBe(ERROR_CODES.ROOM_NOT_FOUND);
+    expect(result.body.error?.message).toBe(en.errors.ROOM_NOT_FOUND);
+  });
+
+  it('言語指定が無ければ Accept-Language を見る', async () => {
+    const result = await callApi('/api/rooms/does-not-exist-id', {
+      acceptLanguage: 'ko-KR,ko;q=0.9',
+    });
+    expect(result.body.error?.message).toBe(ko.errors.ROOM_NOT_FOUND);
+  });
+
+  it('未対応の言語は日本語（正本）へ落ちる', async () => {
+    const result = await callApi('/api/rooms/does-not-exist-id', {
+      locale: 'fr',
+      acceptLanguage: 'fr-FR',
+    });
+    expect(result.body.error?.message).toBe(ja.errors.ROOM_NOT_FOUND);
+  });
+
+  it('バリデーションの詳細も指定言語で返る', async () => {
+    const result = await callApi('/api/rooms', {
+      method: 'POST',
+      body: { title: '', turnstileToken: VALID_TURNSTILE_TOKEN },
+      locale: 'zh',
+    });
+    expect(result.status).toBe(400);
+    expect(result.body.error?.code).toBe(ERROR_CODES.VALIDATION_ERROR);
+    expect(result.body.error?.details).toContain(zh.validation['roomTitle.required']);
+    // 内部キーがそのまま画面へ出ていないこと
+    expect(result.body.error?.details).not.toContain('roomTitle.required');
+  });
+
+  it('チーム分けの失敗理由も指定言語で返る', async () => {
+    const room = await createRoom();
+    // 全員 Tank しかできないため、有効な構成を作れない
+    await seedPlayers(room.roomId, REQUIRED_ACTIVE_PLAYERS, () => ['tank']);
+    const result = await callApi(`/api/rooms/${room.roomId}/team-candidates`, {
+      method: 'POST',
+      token: room.hostToken,
+      locale: 'en',
+    });
+    expect(result.status).toBe(409);
+    expect(result.body.error?.code).toBe(ERROR_CODES.NO_VALID_LINEUP);
+    expect(result.body.error?.details?.join(' ')).toContain('Damage');
   });
 });

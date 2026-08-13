@@ -1,11 +1,13 @@
 /** 破壊的操作の前に表示する確認ダイアログ（キーボード操作対応）。 */
 
 import { useEffect, useRef } from 'react';
+import { useMessages } from '../hooks/useI18n';
 
 export interface ConfirmDialogProps {
   open: boolean;
   title: string;
   description: string;
+  /** 省略時は「実行する」相当の既定文言を使う */
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
@@ -18,13 +20,14 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = '実行する',
-  cancelLabel = 'キャンセル',
+  confirmLabel,
+  cancelLabel,
   destructive = true,
   busy = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const messages = useMessages();
   const confirmRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
@@ -78,7 +81,7 @@ export function ConfirmDialog({
         <p id="confirm-dialog-description">{description}</p>
         <div className="dialog-actions">
           <button type="button" className="button button-ghost" onClick={onCancel} disabled={busy}>
-            {cancelLabel}
+            {cancelLabel ?? messages.common.cancel}
           </button>
           <button
             type="button"
@@ -87,7 +90,7 @@ export function ConfirmDialog({
             ref={confirmRef}
             disabled={busy}
           >
-            {busy ? '処理中…' : confirmLabel}
+            {busy ? messages.dialog.processing : (confirmLabel ?? messages.dialog.defaultConfirm)}
           </button>
         </div>
       </div>

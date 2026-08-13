@@ -1,13 +1,10 @@
 /** チーム候補と確定チームの表示。 */
 
-import {
-  ROLES,
-  ROLE_EXPERIENCE_SHORT_LABELS,
-  ROLE_LABELS,
-  type Role,
-} from '../../shared/constants';
-import { formatRankScore, scoreToRank } from '../../shared/ranks';
+import { ROLES, type Role } from '../../shared/constants';
+import { formatRankLocalized } from '../../shared/i18n';
+import { scoreToRank } from '../../shared/ranks';
 import type { TeamCandidate, TeamComposition } from '../../shared/types';
+import { useMessages } from '../hooks/useI18n';
 import { formatNumber } from '../lib/format';
 
 function TeamBlock({
@@ -19,6 +16,7 @@ function TeamBlock({
   side: 'a' | 'b';
   team: TeamComposition;
 }) {
+  const messages = useMessages();
   return (
     <div className={`team-block team-${side}`}>
       <div className="team-heading">
@@ -26,7 +24,7 @@ function TeamBlock({
           {side === 'a' ? '🔵' : '🔴'}
         </span>
         <h4>{label}</h4>
-        <span className="team-total">合計 {team.totalRank}</span>
+        <span className="team-total">{messages.teams.total(team.totalRank)}</span>
       </div>
       <ul className="team-members">
         {ROLES.map((role: Role) =>
@@ -34,25 +32,32 @@ function TeamBlock({
             .filter((player) => player.role === role)
             .map((player) => (
               <li key={player.playerId} className="team-member">
-                <span className="role-badge">{ROLE_LABELS[role]}</span>
+                <span className="role-badge">{messages.roles[role]}</span>
                 <span className="team-member-name">{player.displayName}</span>
                 {/* ランクはティア色で表示する */}
                 <span className={`team-member-rank tier-${scoreToRank(player.rankScore).tier}`}>
-                  {formatRankScore(player.rankScore)}
+                  {formatRankLocalized(messages, scoreToRank(player.rankScore))}
                   {player.rankEstimated ? (
-                    <span className="rank-estimated-mark">（推定）</span>
+                    <span className="rank-estimated-mark">
+                      ({messages.playerList.estimatedShort})
+                    </span>
                   ) : null}
                   {player.experience && player.experience !== 'main' ? (
                     <span className="rank-estimated-mark">
-                      /{ROLE_EXPERIENCE_SHORT_LABELS[player.experience]}
+                      /
+                      {player.experience === 'sub'
+                        ? messages.experience.subShort
+                        : messages.experience.rareShort}
                     </span>
                   ) : null}
                 </span>
                 <span
                   className={`pref-badge${player.preferenceRank === 1 ? ' pref-first' : ''}`}
-                  title="希望順位"
+                  title={messages.form.preferenceAndRank}
                 >
-                  {player.preferenceRank > 0 ? `第${player.preferenceRank}希望` : '希望外'}
+                  {player.preferenceRank > 0
+                    ? messages.teams.preferenceNth(player.preferenceRank)
+                    : messages.teams.outOfPreference}
                 </span>
               </li>
             )),
@@ -63,34 +68,35 @@ function TeamBlock({
 }
 
 export function CandidateMetrics({ candidate }: { candidate: TeamCandidate }) {
+  const t = useMessages().teams.metrics;
   return (
     <dl className="metrics">
       <div>
-        <dt>総合スコア</dt>
+        <dt>{t.score}</dt>
         <dd>{formatNumber(candidate.score)}</dd>
       </div>
       <div>
-        <dt>総合ランク差</dt>
+        <dt>{t.totalRankDiff}</dt>
         <dd>{formatNumber(candidate.totalRankDiff)}</dd>
       </div>
       <div>
-        <dt>Tank差</dt>
+        <dt>{t.tankRankDiff}</dt>
         <dd>{formatNumber(candidate.tankRankDiff)}</dd>
       </div>
       <div>
-        <dt>Damage平均差</dt>
+        <dt>{t.damageAvgDiff}</dt>
         <dd>{formatNumber(candidate.damageAvgDiff)}</dd>
       </div>
       <div>
-        <dt>Support平均差</dt>
+        <dt>{t.supportAvgDiff}</dt>
         <dd>{formatNumber(candidate.supportAvgDiff)}</dd>
       </div>
       <div>
-        <dt>上位者の偏り</dt>
+        <dt>{t.positionalRankDiff}</dt>
         <dd>{formatNumber(candidate.positionalRankDiff)}</dd>
       </div>
       <div>
-        <dt>希望ペナルティ</dt>
+        <dt>{t.preferencePenalty}</dt>
         <dd>{formatNumber(candidate.preferencePenalty)}</dd>
       </div>
     </dl>
@@ -110,11 +116,14 @@ export function TeamCandidateCard({
   onSelect?: (candidate: TeamCandidate) => void;
   busy?: boolean;
 }) {
+  const messages = useMessages();
   return (
     <article className={`candidate-card${selected ? ' is-selected' : ''}`}>
       <header className="candidate-header">
-        <h3>候補 {index + 1}</h3>
-        {selected ? <span className="badge badge-selected">確定中</span> : null}
+        <h3>{messages.teams.candidateNth(index + 1)}</h3>
+        {selected ? (
+          <span className="badge badge-selected">{messages.teams.selectedBadge}</span>
+        ) : null}
       </header>
       <CandidateMetrics candidate={candidate} />
       <div className="teams">
@@ -128,7 +137,7 @@ export function TeamCandidateCard({
           onClick={() => onSelect(candidate)}
           disabled={busy}
         >
-          {selected ? 'この候補で確定中' : 'この候補で確定する'}
+          {selected ? messages.teams.currentlySelected : messages.teams.selectThis}
         </button>
       ) : null}
     </article>

@@ -12,7 +12,6 @@ import {
   PREFERENCE_PENALTY_FALLBACK,
   REQUIRED_ACTIVE_PLAYERS,
   ROLES,
-  ROLE_LABELS,
   TEAM_ROLE_SLOTS,
   TOTAL_ROLE_SLOTS,
   type Role,
@@ -21,6 +20,15 @@ import {
 import { preferenceIndexOf, type PreferenceGroups } from './preferences';
 import { MAX_RANK_SCORE, MIN_RANK_SCORE } from './ranks';
 import type { AssignedPlayer, TeamCandidate, TeamComposition, TeamSide } from './types';
+import { ja, type Messages } from './i18n/ja';
+
+/**
+ * 失敗理由の文面は利用者に見せるため、辞書を差し替えられるようにしている。
+ * 省略時は正本である日本語を使う（テストや内部呼び出し用の既定値）。
+ */
+function roleName(messages: Messages, role: Role): string {
+  return messages.roles[role];
+}
 
 /** チーム分けへ渡す1人分の入力。ランクは 0〜39 のスコア。 */
 export interface BalancePlayer {
@@ -86,30 +94,28 @@ function stableHash(input: string): string {
 }
 
 /** 入力の妥当性チェック。UI 以前にロジック側でも必ず検証する。 */
-function validateInput(players: BalancePlayer[]): string[] {
+function validateInput(players: BalancePlayer[], messages: Messages): string[] {
   const reasons: string[] = [];
   if (players.length !== REQUIRED_ACTIVE_PLAYERS) {
-    reasons.push(
-      `チーム分けにはちょうど${REQUIRED_ACTIVE_PLAYERS}人が必要です（現在${players.length}人）。`,
-    );
+    reasons.push(messages.balance.playerCountMismatch(REQUIRED_ACTIVE_PLAYERS, players.length));
     return reasons;
   }
   const ids = new Set<string>();
   for (const player of players) {
     if (ids.has(player.id)) {
-      reasons.push('参加者IDが重複しています。');
+      reasons.push(messages.balance.duplicateId);
       break;
     }
     ids.add(player.id);
   }
   for (const player of players) {
     if (player.eligibleRoles.length === 0) {
-      reasons.push(`${player.displayName} の参加可能ロールが設定されていません。`);
+      reasons.push(messages.balance.noEligibleRoles(player.displayName));
       continue;
     }
     const unique = new Set(player.eligibleRoles);
     if (unique.size !== player.eligibleRoles.length) {
-      reasons.push(`${player.displayName} の参加可能ロールが重複しています。`);
+      reasons.push(messages.balance.duplicateRoles(player.displayName));
     }
     for (const role of player.eligibleRoles) {
       const rank = player.roleRanks[role];
@@ -119,11 +125,11 @@ function validateInput(players: BalancePlayer[]): string[] {
         rank < MIN_RANK_SCORE ||
         rank > MAX_RANK_SCORE
       ) {
-        reasons.push(`${player.displayName} の ${ROLE_LABELS[role]} のランクが不正です。`);
+        reasons.push(messages.balance.invalidRank(player.displayName, roleName(messages, role)));
       }
       if (preferenceIndexOf(player.rolePreferenceGroups, role) < 0) {
         reasons.push(
-          `${player.displayName} の希望順位に ${ROLE_LABELS[role]} が含まれていません。`,
+          messages.balance.preferenceMissing(player.displayName, roleName(messages, role)),
         );
       }
     }
@@ -132,15 +138,13 @@ function validateInput(players: BalancePlayer[]): string[] {
 }
 
 /** ロール別の担当可能人数が足りているかを調べる */
-function checkRoleSupply(players: BalancePlayer[]): string[] {
+function checkRoleSupply(players: BalancePlayer[], messages: Messages): string[] {
   const reasons: string[] = [];
   for (const role of ROLES) {
     const capable = players.filter((p) => p.eligibleRoles.includes(role)).length;
     const required = TOTAL_ROLE_SLOTS[role];
     if (capable < required) {
-      reasons.push(
-        `${ROLE_LABELS[role]}を担当可能な参加者が${required}人必要です（現在${capable}人）。`,
-      );
+      reasons.push(messages.balance.roleShortage(roleName(messages, role), required, capable));
     }
   }
   return reasons;
@@ -177,8 +181,11 @@ function compareCandidates(a: ScoredCandidate, b: ScoredCandidate): number {
  * バランスのよいチーム候補を最大 MAX_CANDIDATES 件生成する。
  * 同じ入力からは常に同じ順序の候補を返す。
  */
-export function generateTeamCandidates(input: BalancePlayer[]): BalanceResult {
-  const invalidReasons = validateInput(input);
+export function generateTeamCandidates(
+  input: BalancePlayer[],
+  messages: Messages = ja,
+): BalanceResult {
+  const invalidReasons = validateInput(input, messages);
   if (invalidReasons.length > 0) {
     return {
       ok: false,
@@ -188,7 +195,7 @@ export function generateTeamCandidates(input: BalancePlayer[]): BalanceResult {
     };
   }
 
-  const supplyReasons = checkRoleSupply(input);
+  const supplyReasons = checkRoleSupply(input, messages);
   if (supplyReasons.length > 0) {
     return {
       ok: false,
@@ -351,7 +358,7 @@ export function generateTeamCandidates(input: BalancePlayer[]): BalanceResult {
   assign(0);
 
   if (top.length === 0) {
-    const message = '現在の希望ロールでは有効な構成を作れません。';
+    const message = messages.balance.noValidLineup;
     return { ok: false, code: 'NO_VALID_LINEUP', message, reasons: [message] };
   }
 
@@ -375,8 +382,12 @@ export type EvaluateLineupResult =
  * 主催者が手動で入れ替えた編成を、生成した候補と同じ指標で比較できるようにするためのもの。
  * サーバー側でも同じ関数で検証するため、クライアントの申告を信用しない。
  */
-export function evaluateLineup(input: BalancePlayer[], lineup: LineupSlot[]): EvaluateLineupResult {
-  const invalidReasons = validateInput(input);
+export function evaluateLineup(
+  input: BalancePlayer[],
+  lineup: LineupSlot[],
+  messages: Messages = ja,
+): EvaluateLineupResult {
+  const invalidReasons = validateInput(input, messages);
   if (invalidReasons.length > 0) {
     return { ok: false, message: invalidReasons[0], reasons: invalidReasons };
   }
@@ -386,7 +397,7 @@ export function evaluateLineup(input: BalancePlayer[], lineup: LineupSlot[]): Ev
 
   const reasons: string[] = [];
   if (lineup.length !== REQUIRED_ACTIVE_PLAYERS) {
-    reasons.push(`編成には${REQUIRED_ACTIVE_PLAYERS}人が必要です（現在${lineup.length}人）。`);
+    reasons.push(messages.balance.lineupSize(REQUIRED_ACTIVE_PLAYERS, lineup.length));
     return { ok: false, message: reasons[0], reasons };
   }
 
@@ -395,16 +406,18 @@ export function evaluateLineup(input: BalancePlayer[], lineup: LineupSlot[]): Ev
   for (const slot of lineup) {
     const index = indexOf.get(slot.playerId);
     if (index === undefined) {
-      reasons.push('編成に参加者以外が含まれています。');
+      reasons.push(messages.balance.strangerInLineup);
       continue;
     }
     if (seen.has(slot.playerId)) {
-      reasons.push(`${players[index].displayName} が重複しています。`);
+      reasons.push(messages.balance.duplicateInLineup(players[index].displayName));
       continue;
     }
     seen.add(slot.playerId);
     if (!players[index].eligibleRoles.includes(slot.role)) {
-      reasons.push(`${players[index].displayName} は ${ROLE_LABELS[slot.role]} を担当できません。`);
+      reasons.push(
+        messages.balance.cannotPlayRole(players[index].displayName, roleName(messages, slot.role)),
+      );
       continue;
     }
     teams[slot.team].push({ index, role: slot.role });
@@ -419,7 +432,12 @@ export function evaluateLineup(input: BalancePlayer[], lineup: LineupSlot[]): Ev
       const count = teams[side].filter((slot) => slot.role === role).length;
       if (count !== TEAM_ROLE_SLOTS[role]) {
         reasons.push(
-          `Team ${side} の ${ROLE_LABELS[role]} は${TEAM_ROLE_SLOTS[role]}人である必要があります（現在${count}人）。`,
+          messages.balance.slotCountMismatch(
+            side,
+            roleName(messages, role),
+            TEAM_ROLE_SLOTS[role],
+            count,
+          ),
         );
       }
     }

@@ -2,96 +2,63 @@
 
 import { useEffect } from 'react';
 import { SERVICE_NAME } from '../../shared/constants';
+import { AUTHORITATIVE_LOCALE } from '../../shared/i18n';
+import { useI18n } from '../hooks/useI18n';
 import { Link } from '../router';
 
 export function PrivacyPage() {
+  const { locale, messages } = useI18n();
+  const t = messages.privacy;
+
   useEffect(() => {
-    document.title = `プライバシーポリシー - ${SERVICE_NAME}`;
-  }, []);
+    document.title = `${t.title} - ${SERVICE_NAME}`;
+  }, [t.title]);
 
   return (
     <div className="page">
       <article className="card prose">
-        <h1>プライバシーポリシー</h1>
-        <p>
-          {SERVICE_NAME}
-          （以下「本サービス」）における個人情報等の取り扱いについて、以下のとおり定めます。
-        </p>
+        <h1>{t.title}</h1>
+        {/* 翻訳の解釈差に備え、非日本語版には正本を明示する */}
+        {locale !== AUTHORITATIVE_LOCALE && <p className="translation-note">{t.translationNote}</p>}
+        <p>{t.intro(SERVICE_NAME)}</p>
 
-        <h2>1. 保存する情報</h2>
+        <h2>{t.s1Title}</h2>
         <ul>
-          <li>参加者が入力した表示名</li>
-          <li>参加可能なロール、その希望順位</li>
-          <li>ロールごとの現在または推定ランク、未計測かどうか、プレイ歴の自己申告</li>
-          <li>部屋名、部屋の作成日時・有効期限、募集状態、確定したチーム構成</li>
+          {t.s1Items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
         </ul>
-        <p>
-          これらは、部屋ごとに割り当てられた Cloudflare Durable Objects の SQLite
-          ストレージへ保存されます。
-        </p>
+        <p>{t.s1Body}</p>
 
-        <h2>2. アカウント登録を行いません</h2>
-        <p>
-          本サービスはアカウント登録機能を持たず、メールアドレス、電話番号、SNSアカウント等の取得は行いません。
-          表示名は利用者が自由に決められるニックネームであることを想定しています。本名など、公開されて困る情報は入力しないでください。
-        </p>
+        <h2>{t.s2Title}</h2>
+        <p>{t.s2Body}</p>
 
-        <h2>3. データの保持期間</h2>
-        <p>
-          部屋のデータは、作成から原則24時間で自動的に削除されます。削除時には、参加者情報（表示名・ロール・ランク）、
-          権限トークンのハッシュ値、確定したチーム結果を消去します。主催者が手動で部屋を削除した場合も同様に、
-          以後はアクセスできなくなります。
-        </p>
+        <h2>{t.s3Title}</h2>
+        <p>{t.s3Body}</p>
 
-        <h2>4. 権限トークンとブラウザへの保存</h2>
-        <p>
-          本サービスは、主催者・参加者を識別するためにランダムな権限トークンを発行します。トークンは利用者のブラウザの
-          localStorage
-          へ部屋ごとに分けて保存されます。サーバー側にはトークンそのものを保存せず、秘密鍵を用いた
-          HMAC-SHA-256 によるハッシュ値のみを保存します。
-        </p>
-        <p>
-          ブラウザのデータを消去するとトークンも失われ、主催者操作や自分の登録の編集ができなくなる場合があります。
-        </p>
+        <h2>{t.s4Title}</h2>
+        <p>{t.s4Body1}</p>
+        <p>{t.s4Body2}</p>
 
-        <h2>5. IPアドレスの取り扱い</h2>
-        <p>
-          短時間に大量のリクエストを行う不正利用を防ぐため、レート制限を実施しています。この際、IPアドレスそのものは保存せず、
-          秘密鍵と時間帯を組み合わせた HMAC
-          により生成した不可逆な識別値のみを、短時間（最大1時間程度）だけ保持します。
-          識別値は一定時間ごとに変化し、元のIPアドレスを復元することはできません。
-        </p>
+        <h2>{t.s5Title}</h2>
+        <p>{t.s5Body}</p>
 
-        <h2>6. Cloudflare Turnstile の利用</h2>
-        <p>
-          部屋の作成および新規参加登録の際に、自動化されたアクセスを防ぐため Cloudflare Turnstile
-          を利用します。利用にあたり、Cloudflare
-          社に対して通信情報が送信される場合があります。詳細は Cloudflare
-          社のプライバシーポリシーをご確認ください。
-        </p>
+        <h2>{t.s6Title}</h2>
+        <p>{t.s6Body}</p>
 
-        <h2>7. 外部サービスへのデータ送信</h2>
-        <p>
-          本サービスは、参加者のランクやプレイ歴を外部サービスから取得することはありません。Overwatch
-          2 のランクを取得する公式APIが存在せず、非公式な取得方法は Blizzard
-          の利用規約で禁止されているためです。入力された情報は本サービス外へ送信されません（Turnstile
-          を除く）。
-        </p>
+        <h2>{t.s7Title}</h2>
+        <p>{t.s7Body}</p>
 
-        <h2>8. アクセス解析・広告</h2>
-        <p>
-          初期版では、アクセス解析ツールおよび広告トラッキングは使用していません。第三者へのデータ提供・販売も行いません。
-        </p>
+        <h2>{t.s8Title}</h2>
+        <p>{t.s8Body}</p>
 
-        <h2>9. お問い合わせ・変更</h2>
-        <p>
-          本ポリシーは、機能の追加や法令の変更等に応じて予告なく変更される場合があります。変更後の内容は本ページに掲載します。
-        </p>
+        <h2>{t.s9Title}</h2>
+        <p>{t.s9Body}</p>
 
         <p className="links">
-          <Link href="/">トップページへ戻る</Link>
+          <Link href="/">{messages.common.backToTop}</Link>
           <span aria-hidden="true"> / </span>
-          <Link href="/terms">利用規約</Link>
+          <Link href="/terms">{messages.common.terms}</Link>
         </p>
       </article>
     </div>

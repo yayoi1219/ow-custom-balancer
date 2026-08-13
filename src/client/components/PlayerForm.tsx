@@ -6,12 +6,10 @@ import {
   EXPERIENCE_ADJUSTMENT,
   ROLES,
   ROLE_EXPERIENCES,
-  ROLE_EXPERIENCE_LABELS,
-  ROLE_EXPERIENCE_SHORT_LABELS,
-  ROLE_LABELS,
   type Role,
   type RoleExperience,
 } from '../../shared/constants';
+import type { Messages } from '../../shared/i18n';
 import {
   buildPreferenceGroups,
   preferenceRankMap,
@@ -20,12 +18,12 @@ import {
 import {
   RANK_DIVISIONS,
   RANK_TIERS,
-  RANK_TIER_LABELS,
   tierHasDivisions,
   type RankTier,
   type RankValue,
 } from '../../shared/ranks';
 import type { PlayerInput, RoleRanks } from '../../shared/types';
+import { useMessages } from '../hooks/useI18n';
 import { clearDraft, loadDraft, saveDraft } from '../lib/storage';
 import { Turnstile } from './Turnstile';
 
@@ -36,6 +34,13 @@ export interface PlayerFormDraft {
   /** ロールごとに利用者が付けた希望順位。同じ値なら「どちらでもよい」。 */
   preferenceRanks: Partial<Record<Role, number>>;
   roleRanks: RoleRanks;
+}
+
+/** プレイ歴の短縮表記を辞書から引く */
+function experienceShortLabel(messages: Messages, experience: RoleExperience): string {
+  if (experience === 'main') return messages.experience.mainShort;
+  if (experience === 'sub') return messages.experience.subShort;
+  return messages.experience.rareShort;
 }
 
 const DEFAULT_DIVISION = 3;
@@ -86,10 +91,12 @@ interface RankFieldProps {
   value: RankValue | undefined;
   onChange: (rank: RankValue) => void;
   disabled?: boolean;
+  messages: Messages;
 }
 
-function RankField({ role, value, onChange, disabled }: RankFieldProps) {
+function RankField({ role, value, onChange, disabled, messages }: RankFieldProps) {
   const current = value ?? DEFAULT_RANK;
+  const roleName = messages.roles[role];
   const hasDivisions = tierHasDivisions(current.tier);
   const tierId = `rank-tier-${role}`;
   const divisionId = `rank-division-${role}`;
@@ -110,7 +117,7 @@ function RankField({ role, value, onChange, disabled }: RankFieldProps) {
     <div className={`rank-field tier-${current.tier}`}>
       <div className="rank-field-row">
         <label className="visually-hidden" htmlFor={tierId}>
-          {ROLE_LABELS[role]} のティア
+          {messages.form.tierLabel(roleName)}
         </label>
         <select
           id={tierId}
@@ -120,7 +127,7 @@ function RankField({ role, value, onChange, disabled }: RankFieldProps) {
         >
           {RANK_TIERS.map((tier) => (
             <option key={tier} value={tier}>
-              {RANK_TIER_LABELS[tier]}
+              {messages.tiers[tier]}
             </option>
           ))}
         </select>
@@ -128,7 +135,7 @@ function RankField({ role, value, onChange, disabled }: RankFieldProps) {
         {hasDivisions ? (
           <>
             <label className="visually-hidden" htmlFor={divisionId}>
-              {ROLE_LABELS[role]} のディビジョン
+              {messages.form.divisionLabel(roleName)}
             </label>
             <select
               id={divisionId}
@@ -144,7 +151,7 @@ function RankField({ role, value, onChange, disabled }: RankFieldProps) {
             </select>
           </>
         ) : (
-          <span className="rank-no-division">ディビジョンなし</span>
+          <span className="rank-no-division">{messages.form.noDivision}</span>
         )}
       </div>
       <div className="rank-field-extra">
@@ -156,10 +163,10 @@ function RankField({ role, value, onChange, disabled }: RankFieldProps) {
             disabled={disabled}
             onChange={(event) => onChange({ ...current, estimated: event.target.checked })}
           />
-          <span>未計測（推定で入力）</span>
+          <span>{messages.form.estimated}</span>
         </label>
         <label className="experience-select" htmlFor={experienceId}>
-          <span className="visually-hidden">{ROLE_LABELS[role]} のプレイ歴</span>
+          <span className="visually-hidden">{messages.form.experienceLabel(roleName)}</span>
           <select
             id={experienceId}
             value={current.experience ?? 'main'}
@@ -170,7 +177,7 @@ function RankField({ role, value, onChange, disabled }: RankFieldProps) {
           >
             {ROLE_EXPERIENCES.map((experience) => (
               <option key={experience} value={experience}>
-                {ROLE_EXPERIENCE_LABELS[experience]}
+                {messages.experience[experience]}
               </option>
             ))}
           </select>
@@ -178,8 +185,10 @@ function RankField({ role, value, onChange, disabled }: RankFieldProps) {
       </div>
       {current.estimated === true && (current.experience ?? 'main') !== 'main' ? (
         <p className="rank-field-note">
-          未計測かつ{ROLE_EXPERIENCE_SHORT_LABELS[current.experience ?? 'main']}
-          のため、内部レートを {EXPERIENCE_ADJUSTMENT[current.experience ?? 'main']} 補正します。
+          {messages.form.adjustmentNote(
+            experienceShortLabel(messages, current.experience ?? 'main'),
+            EXPERIENCE_ADJUSTMENT[current.experience ?? 'main'],
+          )}
         </p>
       ) : null}
     </div>
@@ -215,6 +224,7 @@ export function PlayerForm({
   onSubmit,
   onCancel,
 }: PlayerFormProps) {
+  const messages = useMessages();
   const initialDraft = useMemo<PlayerFormDraft>(() => {
     if (initialValue) {
       const { selectedRoles, preferenceRanks } = draftFromGroups(initialValue.rolePreferenceGroups);
@@ -299,21 +309,21 @@ export function PlayerForm({
     setLocalError(null);
 
     if (displayName.trim().length === 0) {
-      setLocalError('表示名を入力してください。');
+      setLocalError(messages.validation['displayName.required']);
       return;
     }
     if (selectedRoles.length === 0) {
-      setLocalError('参加可能なロールを1つ以上選択してください。');
+      setLocalError(messages.validation['role.required']);
       return;
     }
     for (const role of selectedRoles) {
       if (!roleRanks[role]) {
-        setLocalError(`${ROLE_LABELS[role]} のランクを入力してください。`);
+        setLocalError(messages.validation['rank.missing']);
         return;
       }
     }
     if (mode === 'create' && turnstileSiteKey && !turnstileToken) {
-      setLocalError('認証（Turnstile）を完了してください。');
+      setLocalError(messages.errors.TURNSTILE_REQUIRED);
       return;
     }
 
@@ -340,18 +350,16 @@ export function PlayerForm({
     <form className="card form" onSubmit={handleSubmit} noValidate>
       <h2>
         {mode === 'create'
-          ? '参加登録'
+          ? messages.form.joinTitle
           : subjectName
-            ? `${subjectName} の登録内容を修正`
-            : '登録内容の編集'}
+            ? messages.form.hostEditTitle(subjectName)
+            : messages.form.editTitle}
       </h2>
-      {subjectName ? (
-        <p className="field-help">主催者として、この参加者の登録内容を修正します。</p>
-      ) : null}
+      {subjectName ? <p className="field-help">{messages.form.hostEditNote}</p> : null}
 
       <div className="field">
         <label htmlFor="display-name">
-          表示名 <span className="required">必須</span>
+          {messages.form.displayName} <span className="required">{messages.common.required}</span>
         </label>
         <input
           id="display-name"
@@ -364,13 +372,13 @@ export function PlayerForm({
           aria-describedby="display-name-help"
         />
         <p className="field-help" id="display-name-help">
-          部屋の中で重複しない名前を{DISPLAY_NAME_MAX_LENGTH}文字以内で入力してください。
+          {messages.form.displayNameHelp}
         </p>
       </div>
 
       <fieldset className="field">
         <legend>
-          参加可能なロール <span className="required">必須</span>
+          {messages.form.eligibleRoles} <span className="required">{messages.common.required}</span>
         </legend>
         <div className="role-checkboxes">
           {ROLES.map((role) => {
@@ -383,20 +391,19 @@ export function PlayerForm({
                   disabled={disabled || submitting}
                   onChange={() => toggleRole(role)}
                 />
-                <span>{ROLE_LABELS[role]}</span>
+                <span>{messages.roles[role]}</span>
               </label>
             );
           })}
         </div>
-        <p className="field-help">選択したロールは、下で希望順位とランクを設定します。</p>
+        <p className="field-help">{messages.form.eligibleRolesHelp}</p>
       </fieldset>
 
       {selectedRoles.length > 0 ? (
         <div className="field">
-          <p className="field-label">希望順位とランク</p>
+          <p className="field-label">{messages.form.preferenceAndRank}</p>
           <p className="field-help">
-            同じ順位を選ぶと「どちらでもよい」になります。ランクが未計測の場合は、近いと思う値を選んで
-            「未計測（推定で入力）」にチェックを入れてください。
+            {messages.form.preferenceHelp}
             {selectedRoles.length > 1 ? (
               <>
                 {' '}
@@ -406,7 +413,7 @@ export function PlayerForm({
                   onClick={setAllSameRank}
                   disabled={disabled || submitting || allSameRank}
                 >
-                  すべて同順位（どれでもよい）にする
+                  {messages.form.makeAllSame}
                 </button>
               </>
             ) : null}
@@ -419,9 +426,11 @@ export function PlayerForm({
               return (
                 <li key={role} className="preference-item">
                   <div className="preference-head">
-                    <span className="role-badge">{ROLE_LABELS[role]}</span>
+                    <span className="role-badge">{messages.roles[role]}</span>
                     <label className="preference-select" htmlFor={selectId}>
-                      <span className="visually-hidden">{ROLE_LABELS[role]} の希望順位</span>
+                      <span className="visually-hidden">
+                        {messages.form.preferenceRankLabel(messages.roles[role])}
+                      </span>
                       <select
                         id={selectId}
                         value={preferenceRanks[role] ?? 1}
@@ -435,15 +444,17 @@ export function PlayerForm({
                       >
                         {rankOptions.map((option) => (
                           <option key={option} value={option}>
-                            第{option}希望
+                            {messages.form.preferenceNth(option)}
                           </option>
                         ))}
                       </select>
                     </label>
                     <span className="preference-effective">
-                      第{rank}希望
+                      {messages.form.preferenceNth(rank)}
                       {sameRankPartners.length > 0
-                        ? `（${sameRankPartners.map((item) => ROLE_LABELS[item]).join('・')} と同順位）`
+                        ? messages.form.tiedWith(
+                            sameRankPartners.map((item) => messages.roles[item]).join(' / '),
+                          )
                         : ''}
                     </span>
                   </div>
@@ -452,6 +463,7 @@ export function PlayerForm({
                     value={roleRanks[role]}
                     disabled={disabled || submitting}
                     onChange={(rank) => setRoleRanks((current) => ({ ...current, [role]: rank }))}
+                    messages={messages}
                   />
                 </li>
               );
@@ -482,7 +494,11 @@ export function PlayerForm({
 
       <div className="form-actions">
         <button type="submit" className="button button-primary" disabled={disabled || submitting}>
-          {submitting ? '送信中…' : mode === 'create' ? '参加登録する' : '変更を保存する'}
+          {submitting
+            ? messages.form.submitting
+            : mode === 'create'
+              ? messages.form.submitJoin
+              : messages.form.submitEdit}
         </button>
         {onCancel ? (
           <button
@@ -494,7 +510,7 @@ export function PlayerForm({
             }}
             disabled={submitting}
           >
-            キャンセル
+            {messages.common.cancel}
           </button>
         ) : null}
       </div>

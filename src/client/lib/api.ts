@@ -8,6 +8,7 @@ import {
   type ApiResponse,
   type ErrorCode,
 } from '../../shared/errors';
+import { DEFAULT_LOCALE, LOCALE_HEADER, type Locale } from '../../shared/i18n';
 import type {
   CreateRoomResponse,
   JoinRoomResponse,
@@ -17,6 +18,22 @@ import type {
   RoomStateResponse,
   TeamCandidatesResponse,
 } from '../../shared/types';
+
+/**
+ * 画面で選ばれている言語。
+ * サーバーが返す文面（チーム分けの失敗理由など）も同じ言語で受け取るため、
+ * 全リクエストにヘッダーとして付ける。React の外からも参照できるよう
+ * モジュール変数で保持し、`I18nProvider` が更新する。
+ */
+let activeLocale: Locale = DEFAULT_LOCALE;
+
+export function setActiveLocale(locale: Locale): void {
+  activeLocale = locale;
+}
+
+export function getActiveLocale(): Locale {
+  return activeLocale;
+}
 
 export class ApiError extends Error {
   readonly code: ErrorCode;
@@ -47,6 +64,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (options.token) {
     headers.set(AUTH_HEADER, options.token);
   }
+  headers.set(LOCALE_HEADER, activeLocale);
 
   let response: Response;
   try {

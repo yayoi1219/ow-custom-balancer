@@ -205,8 +205,35 @@ a {
 
 .site-header nav {
   display: flex;
+  align-items: center;
   gap: 1.1rem;
   font-size: 0.83rem;
+}
+
+/* 言語切り替え。ヘッダーの他のリンクより主張しないよう控えめにする。 */
+.language-switcher select {
+  /* 共通の select は幅いっぱいに広がるため、ヘッダー内では内容幅に戻す */
+  width: auto;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.83rem;
+  border-radius: 6px;
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.language-switcher select:hover {
+  color: var(--text-strong);
+}
+
+/* 法的文面の非日本語版に出す「日本語版が正本」の注記 */
+.translation-note {
+  margin: 0 0 1.1rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid var(--border-strong);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.7;
 }
 
 .page {

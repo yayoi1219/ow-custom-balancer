@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useMessages } from '../hooks/useI18n';
 
 interface TurnstileRenderOptions {
   sitekey: string;
@@ -68,6 +69,7 @@ export interface TurnstileProps {
 }
 
 export function Turnstile({ siteKey, action, resetKey, onToken }: TurnstileProps) {
+  const messages = useMessages();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const onTokenRef = useRef(onToken);
   const [failed, setFailed] = useState(false);
@@ -114,10 +116,10 @@ export function Turnstile({ siteKey, action, resetKey, onToken }: TurnstileProps
 
   return (
     <div className="turnstile">
-      <div ref={containerRef} aria-label="ロボットではないことの確認" />
+      <div ref={containerRef} aria-label={messages.form.turnstileLabel} />
       {failed ? (
         <p className="field-error" role="alert">
-          認証ウィジェットを読み込めませんでした。通信環境を確認して再読み込みしてください。
+          {messages.form.turnstileLoadFailed}
         </p>
       ) : null}
     </div>

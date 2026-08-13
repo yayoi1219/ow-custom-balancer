@@ -148,23 +148,15 @@ export function scoreToRank(score: number): RankValue {
   throw new Error(`invalid rank score: ${String(score)}`);
 }
 
-/** 「Diamond 3」「Champion」のような表示文字列を作る */
+/**
+ * 「Diamond 3」「Champion」のような表示文字列を作る（英語表記）。
+ * 画面表示には言語に追従する `formatRankLocalized()` を使うこと。
+ * こちらはログや内部比較のような、言語に依存させたくない用途向け。
+ */
 export function formatRank(rank: RankValue): string {
   const label = RANK_TIER_LABELS[rank.tier];
   if (!tierHasDivisions(rank.tier)) return label;
   return `${label} ${String(rank.division)}`;
-}
-
-/** 「DIA3」「CHM」のような短縮表示 */
-export function formatRankShort(rank: RankValue): string {
-  const label = RANK_TIER_SHORT_LABELS[rank.tier];
-  if (!tierHasDivisions(rank.tier)) return label;
-  return `${label}${String(rank.division)}`;
-}
-
-/** スコアから直接表示文字列を作る */
-export function formatRankScore(score: number): string {
-  return formatRank(scoreToRank(score));
 }
 
 /**

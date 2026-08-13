@@ -8,10 +8,12 @@
 
 import { useMemo, useRef, useState, type ReactElement } from 'react';
 import { evaluateLineup, type LineupSlot } from '../../shared/balancer';
-import { ROLES, ROLE_LABELS, type Role } from '../../shared/constants';
+import { ROLES, type Role } from '../../shared/constants';
+import { formatRankLocalized } from '../../shared/i18n';
 import { lineupFromCandidate, swapLineupSlots, toBalancePlayers } from '../../shared/lineup';
-import { formatRankScore, scoreToRank } from '../../shared/ranks';
+import { scoreToRank } from '../../shared/ranks';
 import type { PlayerPublic, TeamCandidate, TeamSide } from '../../shared/types';
+import { useMessages } from '../hooks/useI18n';
 import { formatNumber } from '../lib/format';
 import { CandidateMetrics } from './TeamView';
 
@@ -25,6 +27,7 @@ export interface LineupEditorProps {
 }
 
 export function LineupEditor({ candidate, players, busy, onSave, onCancel }: LineupEditorProps) {
+  const messages = useMessages();
   const [lineup, setLineup] = useState<LineupSlot[]>(() => lineupFromCandidate(candidate));
   const [picked, setPickedState] = useState<string | null>(null);
   // 連続クリックが同一タスクにまとまっても取りこぼさないよう、選択中の値は ref でも保持する
@@ -42,7 +45,10 @@ export function LineupEditor({ candidate, players, busy, onSave, onCancel }: Lin
   );
 
   // 現在の編成を、サーバーと同じ計算式で採点する
-  const evaluated = useMemo(() => evaluateLineup(balancePlayers, lineup), [balancePlayers, lineup]);
+  const evaluated = useMemo(
+    () => evaluateLineup(balancePlayers, lineup, messages),
+    [balancePlayers, lineup, messages],
+  );
   const preview = evaluated.ok ? evaluated.candidate : null;
   const changed = useMemo(() => {
     const original = lineupFromCandidate(candidate);
@@ -74,10 +80,14 @@ export function LineupEditor({ candidate, players, busy, onSave, onCancel }: Lin
     const targetPlayer = playerById.get(target.playerId);
     const blocked: string[] = [];
     if (sourcePlayer && !sourcePlayer.eligibleRoles.includes(target.role)) {
-      blocked.push(`${sourcePlayer.displayName} は ${ROLE_LABELS[target.role]} を担当できません。`);
+      blocked.push(
+        messages.balance.cannotPlayRole(sourcePlayer.displayName, messages.roles[target.role]),
+      );
     }
     if (targetPlayer && !targetPlayer.eligibleRoles.includes(source.role)) {
-      blocked.push(`${targetPlayer.displayName} は ${ROLE_LABELS[source.role]} を担当できません。`);
+      blocked.push(
+        messages.balance.cannotPlayRole(targetPlayer.displayName, messages.roles[source.role]),
+      );
     }
     if (blocked.length > 0) {
       setMessage(blocked.join(' '));
@@ -100,7 +110,9 @@ export function LineupEditor({ candidate, players, busy, onSave, onCancel }: Lin
         </span>
         <h4>TEAM {team}</h4>
         <span className="team-total">
-          合計 {preview ? (team === 'A' ? preview.teamA.totalRank : preview.teamB.totalRank) : '-'}
+          {preview
+            ? messages.teams.total(team === 'A' ? preview.teamA.totalRank : preview.teamB.totalRank)
+            : '-'}
         </span>
       </div>
       <ul className="team-members">
@@ -121,19 +133,19 @@ export function LineupEditor({ candidate, players, busy, onSave, onCancel }: Lin
                 disabled={busy}
                 aria-pressed={isPicked}
               >
-                <span className="role-badge">{ROLE_LABELS[slot.role]}</span>
+                <span className="role-badge">{messages.roles[slot.role]}</span>
                 <span className="team-member-name">{player?.displayName ?? slot.playerId}</span>
                 {assigned ? (
                   <span className={`team-member-rank tier-${scoreToRank(assigned.rankScore).tier}`}>
-                    {formatRankScore(assigned.rankScore)}
+                    {formatRankLocalized(messages, scoreToRank(assigned.rankScore))}
                   </span>
                 ) : null}
                 <span
                   className={`pref-badge${assigned?.preferenceRank === 1 ? ' pref-first' : ''}`}
                 >
                   {assigned && assigned.preferenceRank > 0
-                    ? `第${assigned.preferenceRank}希望`
-                    : '希望外'}
+                    ? messages.teams.preferenceNth(assigned.preferenceRank)
+                    : messages.teams.outOfPreference}
                 </span>
               </button>
             </li>
@@ -145,18 +157,19 @@ export function LineupEditor({ candidate, players, busy, onSave, onCancel }: Lin
 
   return (
     <div className="lineup-editor">
-      <p className="field-help">
-        入れ替えたい2人を順にタップ（クリック）してください。担当できないロールへの入れ替えは行われません。
-      </p>
+      <p className="field-help">{messages.lineup.help}</p>
 
       {preview ? (
         <>
           <CandidateMetrics candidate={preview} />
           <p className="lineup-diff">
-            元の候補との差:{' '}
+            {messages.lineup.diffLabel}:{' '}
             {changed
-              ? `総合スコア ${formatNumber(candidate.score)} → ${formatNumber(preview.score)}`
-              : '変更なし'}
+              ? messages.lineup.scoreChange(
+                  formatNumber(candidate.score),
+                  formatNumber(preview.score),
+                )
+              : messages.lineup.noChange}
           </p>
         </>
       ) : (
@@ -183,7 +196,7 @@ export function LineupEditor({ candidate, players, busy, onSave, onCancel }: Lin
           onClick={() => onSave(lineup)}
           disabled={busy || !preview || !changed}
         >
-          この編成で確定する
+          {messages.lineup.save}
         </button>
         <button
           type="button"
@@ -195,10 +208,10 @@ export function LineupEditor({ candidate, players, busy, onSave, onCancel }: Lin
           }}
           disabled={busy || !changed}
         >
-          元に戻す
+          {messages.lineup.reset}
         </button>
         <button type="button" className="button button-ghost" onClick={onCancel} disabled={busy}>
-          調整をやめる
+          {messages.lineup.stop}
         </button>
       </div>
     </div>

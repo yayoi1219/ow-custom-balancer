@@ -6,10 +6,11 @@
  */
 
 import { useState } from 'react';
-import { ROLES, ROLE_LABELS, TEAM_ROLE_SLOTS, type Role } from '../../shared/constants';
+import { ROLES, TEAM_ROLE_SLOTS, type Role } from '../../shared/constants';
 import { currentTurn, openSlots, pickableRoles, remainingPlayers } from '../../shared/draft';
-import { formatRank } from '../../shared/ranks';
+import { formatRankLocalized } from '../../shared/i18n';
 import type { DraftState, PlayerPublic, TeamSide } from '../../shared/types';
+import { useMessages } from '../hooks/useI18n';
 
 export interface DraftBoardProps {
   draft: DraftState;
@@ -34,6 +35,7 @@ export function DraftBoard({
   onPick,
   onCancel,
 }: DraftBoardProps) {
+  const messages = useMessages();
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const byId = new Map(players.map((player) => [player.id, player]));
   const turn = currentTurn(draft);
@@ -54,7 +56,9 @@ export function DraftBoard({
             {team === 'A' ? '🔵' : '🔴'}
           </span>
           <h4>TEAM {team}</h4>
-          <span className="team-total">キャプテン: {nameOf(draft.captains[team])}</span>
+          <span className="team-total">
+            {messages.draft.captainOf(nameOf(draft.captains[team]))}
+          </span>
         </div>
         <ul className="team-members">
           {ROLES.map((role) => {
@@ -63,16 +67,16 @@ export function DraftBoard({
             return [
               ...picked.map((pick) => (
                 <li key={`${role}-${pick.playerId}`} className="team-member">
-                  <span className="role-badge">{ROLE_LABELS[role]}</span>
+                  <span className="role-badge">{messages.roles[role]}</span>
                   <span className="team-member-name">{nameOf(pick.playerId)}</span>
                   {pick.playerId === draft.captains[team] ? (
-                    <span className="badge badge-host">C</span>
+                    <span className="badge badge-host">{messages.draft.captainMark}</span>
                   ) : null}
                 </li>
               )),
               ...empty.map((_, index) => (
                 <li key={`${role}-empty-${index}`} className="team-member draft-empty-slot">
-                  <span className="role-badge">{ROLE_LABELS[role]}</span>
+                  <span className="role-badge">{messages.roles[role]}</span>
                   <span className="team-member-name">—</span>
                 </li>
               )),
@@ -87,18 +91,18 @@ export function DraftBoard({
     <div className="draft-board">
       <div className="draft-status">
         {draft.status === 'completed' ? (
-          <p className="notice">ドラフトが完了しました。下の確定チームをご確認ください。</p>
+          <p className="notice">{messages.draft.completedNotice}</p>
         ) : (
           <p className={`notice${isMyTurn ? ' notice-warn' : ''}`}>
             {turn ? (
               <>
-                現在の手番: <strong>TEAM {turn}</strong>（{nameOf(draft.captains[turn])}）
-                {isMyTurn ? ' — あなたの番です' : ''}
+                {messages.draft.currentTurn(turn, nameOf(draft.captains[turn]))}
+                {isMyTurn ? ` — ${messages.draft.yourTurn}` : ''}
                 {' / '}
-                残り {draft.order.length} 指名
+                {messages.draft.remainingPicks(draft.order.length)}
               </>
             ) : (
-              'ドラフトは終了しています。'
+              messages.draft.finished
             )}
           </p>
         )}
@@ -111,12 +115,8 @@ export function DraftBoard({
 
       {draft.status === 'active' ? (
         <div className="draft-pool">
-          <p className="field-label">未指名（{pool.length}人）</p>
-          {!canPick ? (
-            <p className="field-help">
-              手番のキャプテンが指名するのを待っています。画面は自動で更新されます。
-            </p>
-          ) : null}
+          <p className="field-label">{messages.draft.poolTitle(pool.length)}</p>
+          {!canPick ? <p className="field-help">{messages.draft.waitingForCaptain}</p> : null}
           <ul className="draft-pool-list">
             {pool.map((player) => {
               const roles = canPick ? pickableRoles(draft, players, player.id) : [];
@@ -139,8 +139,10 @@ export function DraftBoard({
                             key={role}
                             className={`rank-tag tier-${rank ? rank.tier : 'unknown'}`}
                           >
-                            <span className="rank-tag-role">{ROLE_LABELS[role]}</span>
-                            <span className="rank-tag-rank">{rank ? formatRank(rank) : '-'}</span>
+                            <span className="rank-tag-role">{messages.roles[role]}</span>
+                            <span className="rank-tag-rank">
+                              {rank ? formatRankLocalized(messages, rank) : '-'}
+                            </span>
                           </span>
                         );
                       })}
@@ -159,11 +161,11 @@ export function DraftBoard({
                           }}
                           disabled={busy}
                         >
-                          {ROLE_LABELS[role]} で指名
+                          {messages.draft.pickAs(messages.roles[role])}
                         </button>
                       ))}
                       {roles.length === 0 ? (
-                        <span className="field-help">空いている枠に入れられません。</span>
+                        <span className="field-help">{messages.draft.noOpenSlot}</span>
                       ) : null}
                     </div>
                   ) : null}
@@ -183,7 +185,7 @@ export function DraftBoard({
       {isHost ? (
         <div className="button-row">
           <button type="button" className="button button-ghost" onClick={onCancel} disabled={busy}>
-            ドラフトを中止
+            {messages.draft.cancelDraft}
           </button>
         </div>
       ) : null}
@@ -208,6 +210,7 @@ export function DraftSetup({
   ) => void;
   onCancel: () => void;
 }) {
+  const messages = useMessages();
   const [aId, setAId] = useState<string>(players[0]?.id ?? '');
   const [bId, setBId] = useState<string>(players[1]?.id ?? '');
 
@@ -233,7 +236,7 @@ export function DraftSetup({
     const setRole = side === 'A' ? setARole : setBRole;
     return (
       <div className="field">
-        <label htmlFor={`captain-${side}`}>TEAM {side} のキャプテン</label>
+        <label htmlFor={`captain-${side}`}>{messages.draft.captainFor(side)}</label>
         <div className="rank-field-row">
           <select
             id={`captain-${side}`}
@@ -250,12 +253,12 @@ export function DraftSetup({
           <select
             value={role}
             disabled={busy}
-            aria-label={`TEAM ${side} のキャプテンの担当ロール`}
+            aria-label={messages.draft.captainRoleFor(side)}
             onChange={(event) => setRole(event.target.value as Role)}
           >
             {rolesOf(id).map((option) => (
               <option key={option} value={option}>
-                {ROLE_LABELS[option]}
+                {messages.roles[option]}
               </option>
             ))}
           </select>
@@ -267,10 +270,11 @@ export function DraftSetup({
   return (
     <div className="draft-setup">
       <p className="field-help">
-        キャプテン2人とその担当ロールを決めます。残り8人は
-        {' A→B→B→A→A→B→B→A '}
-        の順でキャプテンが交互に指名します（各チーム Tank×{TEAM_ROLE_SLOTS.tank} / Damage×
-        {TEAM_ROLE_SLOTS.damage} / Support×{TEAM_ROLE_SLOTS.support}）。
+        {messages.draft.setupHelp(
+          TEAM_ROLE_SLOTS.tank,
+          TEAM_ROLE_SLOTS.damage,
+          TEAM_ROLE_SLOTS.support,
+        )}
       </p>
       {renderSide('A')}
       {renderSide('B')}
@@ -286,10 +290,10 @@ export function DraftSetup({
           onClick={() => onStart({ playerId: aId, role: aRole }, { playerId: bId, role: bRole })}
           disabled={busy || aId === bId || !aId || !bId}
         >
-          ドラフトを開始
+          {messages.draft.start}
         </button>
         <button type="button" className="button button-ghost" onClick={onCancel} disabled={busy}>
-          やめる
+          {messages.draft.stop}
         </button>
       </div>
     </div>

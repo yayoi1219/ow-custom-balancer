@@ -6,23 +6,13 @@
 /** サービス名（変更する場合はここだけを書き換える） */
 export const SERVICE_NAME = 'OW Custom Balancer';
 
-/** サービスの短い説明 */
-export const SERVICE_DESCRIPTION =
-  'Overwatch 2 のカスタムゲーム向けに、参加者のロール希望とランクを集めてバランスのよい 5vs5 を作るツールです。';
-
-/** 非公式である旨の注記（フッター表示） */
-export const DISCLAIMER =
-  '本サービスは非公式のコミュニティツールであり、Blizzard Entertainment とは関係ありません。';
-
-/** ロール定義 */
+/**
+ * ロール定義。
+ * 画面に出すロール名は言語ごとに変わるため、`src/shared/i18n/` の辞書が持つ
+ * （ここに文言を置くと翻訳を素通りしてしまう）。
+ */
 export const ROLES = ['tank', 'damage', 'support'] as const;
 export type Role = (typeof ROLES)[number];
-
-export const ROLE_LABELS: Record<Role, string> = {
-  tank: 'Tank',
-  damage: 'Damage',
-  support: 'Support',
-};
 
 /** 1チームあたりのロール枠（ロールキュー構成） */
 export const TEAM_ROLE_SLOTS: Record<Role, number> = {
@@ -99,18 +89,6 @@ export const BALANCE_WEIGHTS = {
  */
 export const ROLE_EXPERIENCES = ['main', 'sub', 'rare'] as const;
 export type RoleExperience = (typeof ROLE_EXPERIENCES)[number];
-
-export const ROLE_EXPERIENCE_LABELS: Record<RoleExperience, string> = {
-  main: 'メイン（普段からやる）',
-  sub: 'サブ（そこそこやる）',
-  rare: 'たまに（不慣れ）',
-};
-
-export const ROLE_EXPERIENCE_SHORT_LABELS: Record<RoleExperience, string> = {
-  main: 'メイン',
-  sub: 'サブ',
-  rare: '不慣れ',
-};
 
 /**
  * 内部レートの補正値（ランクスコア基準、1 = 1ディビジョン）。
