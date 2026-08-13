@@ -19,9 +19,10 @@
   },
 
   // 公開してよい値のみ vars へ置く（秘密値は wrangler secret put で設定する）
-  // 下記は Cloudflare 公式のテスト用 site key（常に成功する）。本番では自分のキーへ変更する。
+  // Turnstile の site key はブラウザへ埋め込まれる公開値。
+  // 対になる secret key は `wrangler secret put TURNSTILE_SECRET_KEY` で設定する。
   "vars": {
-    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAEOlZq2U1EBU2Nz1",
   },
 
   "durable_objects": {
